@@ -1,5 +1,5 @@
 // public/client.js – Fixed encryption key issue (using passphrase)
-const socket = io();
+const socket = io('https://secure-chat-jqnr.onrender.com');
 
 let myUsername = null;
 let myKeyPair = null;          // ECDH key pair (private + public)
