@@ -1,11 +1,36 @@
-// public/client.js – Fixed encryption key issue (using passphrase)
-const socket = io('https://secure-chat-jqnr.onrender.com');
+// public/client.js – Full version with BLE & Private Payments + Wallet Handshake
+// Uses @hinkal/common (original working package) and ethers v5
+import { prepareEthersHinkal } from '@hinkal/common/providers/prepareEthersHinkal';
 
+const socket = io('https://secure-chat-jqnr.onrender.com'); // Replace with your Render URL
+
+// ---------- Core Chat Variables ----------
 let myUsername = null;
-let myKeyPair = null;          // ECDH key pair (private + public)
-let peers = {};                // Map of peerId -> { dataChannel, encryptionKey (base64 string), peerConnection }
+let myKeyPair = null;          // ECDH key pair (private + public) – extractable
+let peers = {};                // Map of peerId -> { dataChannel, encryptionKey (base64 string), peerConnection, walletAddress }
 let receivingFile = null;      // State for incoming file
 let lastUserList = [];         // Store the most recent user list (for auto peer creation)
+
+// ---------- BLE State ----------
+let bleEnabled = false;
+let bleAdvertising = false;
+let bleScanning = false;
+let bleConnectedDeviceId = null;
+const peerKeys = {};           // Store encryption keys for BLE peers (keyed by deviceId)
+
+// BLE service UUIDs
+const BLE_SERVICE_UUID = '12345678-1234-1234-1234-123456789abc';
+const BLE_CHARACTERISTIC_UUID = 'abcdef01-1234-1234-1234-123456789abc';
+
+// ---------- Payment State ----------
+let userWallet = null;
+let privacySDK = null;
+let shieldedBalances = new Map();
+let currentNetwork = {
+    chainId: 5,                     // Goerli
+    name: 'Goerli',
+    rpcUrl: 'https://goerli.infura.io/v3/40544311a68c4b4e83ae8ffb74aedaba' // Your Infura key
+};
 
 // DOM elements
 const loginDiv = document.getElementById('login');
@@ -20,38 +45,68 @@ const fileInput = document.getElementById('fileInput');
 const sendFileBtn = document.getElementById('sendFileBtn');
 const progressDiv = document.getElementById('progress');
 
+// BLE DOM elements
+const enableBLEBtn = document.getElementById('enableBLEBtn');
+const disableBLEBtn = document.getElementById('disableBLEBtn');
+const nearbyDevicesDiv = document.getElementById('nearbyDevices');
+
+// Payment DOM elements
+const walletAddressSpan = document.getElementById('wallet-address');
+const networkNameSpan = document.getElementById('network-name');
+const balanceListDiv = document.getElementById('balance-list');
+const refreshBalancesBtn = document.getElementById('refresh-balances');
+const tokenSelect = document.getElementById('token-select');
+const paymentAmountInput = document.getElementById('payment-amount');
+const recipientAddressInput = document.getElementById('recipient-address');
+const sendPrivatePaymentBtn = document.getElementById('send-private-payment');
+const paymentStatusDiv = document.getElementById('payment-status');
+
 // ------------------------------------------------------------
-// 1. Key generation & exchange (ECDH)
+// 1. Key generation & exchange (ECDH) – extractable
 // ------------------------------------------------------------
 joinBtn.addEventListener('click', async () => {
     const name = usernameInput.value.trim();
     if (!name) return;
     myUsername = name;
 
-    // Generate ECDH key pair (P-256 curve)
+    // Generate ECDH key pair (P-256 curve) – extractable for wallet derivation
     myKeyPair = await crypto.subtle.generateKey(
         {
             name: "ECDH",
             namedCurve: "P-256"
         },
-        false,                // not extractable (private key stays in browser)
+        true,
         ["deriveKey", "deriveBits"]
     );
 
-    // Export the public key (raw format) to send to others
+    // Derive blockchain wallet from master key
+    try {
+        userWallet = await deriveWalletFromMasterKey(myKeyPair.privateKey);
+        walletAddressSpan.textContent = userWallet.address;
+        networkNameSpan.textContent = currentNetwork.name;
+
+        // Initialize privacy SDK (Hinkal)
+        await initPrivacySDK();
+    } catch (err) {
+        console.error('Wallet/Privacy init failed:', err);
+        walletAddressSpan.textContent = 'Error';
+    }
+
+    // Export public key and join chat
     const publicKeyBuffer = await crypto.subtle.exportKey("raw", myKeyPair.publicKey);
-    // Convert to base64 for easy transport over socket
     const publicKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
 
     socket.emit('join', { username: name, publicKey: publicKeyBase64 });
     loginDiv.style.display = 'none';
     chatDiv.style.display = 'block';
+
+    // BLE will be initialized only when user clicks "Enable BLE Mode"
 });
 
 // Receive updated list of online users (including their public keys)
 socket.on('user-list', (users) => {
     console.log('Received user list:', users);
-    lastUserList = users;  // store for later use
+    lastUserList = users;
     const others = users.filter(u => u.id !== socket.id);
     userList.innerHTML = '';
     others.forEach(user => {
@@ -73,34 +128,26 @@ async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
         return;
     }
 
-    // Import the target's public key
     const targetPublicKey = await importPublicKey(targetPublicKeyBase64);
 
-    // Derive shared secret (256 bits) using our private key and their public key
     const sharedSecretBits = await crypto.subtle.deriveBits(
-        {
-            name: "ECDH",
-            public: targetPublicKey
-        },
+        { name: "ECDH", public: targetPublicKey },
         myKeyPair.privateKey,
         256
     );
 
-    // Convert shared secret (ArrayBuffer) to a base64 string to use as passphrase
     const sharedSecretBase64 = btoa(String.fromCharCode(...new Uint8Array(sharedSecretBits)));
-    console.log('Encryption key (base64) derived for', targetUsername, sharedSecretBase64.substring(0,10)+'...');
+    console.log('Encryption key derived for', targetUsername);
 
-    // Create peer entry
     peers[targetId] = {
-        encryptionKey: sharedSecretBase64,   // store as base64 string (passphrase)
+        encryptionKey: sharedSecretBase64,
         dataChannel: null,
-        peerConnection: null
+        peerConnection: null,
+        walletAddress: null
     };
 
-    // Create WebRTC peer connection (as initiator)
-    const peer = createPeerConnection(targetId, false); // returns the peer
+    const peer = createPeerConnection(targetId, false);
 
-    // Actually create and send an offer
     try {
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
@@ -111,7 +158,6 @@ async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
     }
 }
 
-// Import a base64-encoded public key
 async function importPublicKey(base64Key) {
     const binary = atob(base64Key);
     const buffer = new Uint8Array(binary.length);
@@ -121,11 +167,8 @@ async function importPublicKey(base64Key) {
     return await crypto.subtle.importKey(
         "raw",
         buffer,
-        {
-            name: "ECDH",
-            namedCurve: "P-256"
-        },
-        false,
+        { name: "ECDH", namedCurve: "P-256" },
+        true,
         []
     );
 }
@@ -137,13 +180,11 @@ socket.on('signal', async (data) => {
     const { from, signal } = data;
     console.log('Received signal from', from, 'type:', signal.type);
 
-    // If we don't have a peer object yet, try to create it from stored user list
     if (!peers[from]) {
         console.log('No peer entry for', from, 'attempting to create from user list');
         const userInfo = lastUserList.find(u => u.id === from);
         if (userInfo && userInfo.publicKey) {
             console.log('Found public key for', from);
-            // Import public key and derive encryption key
             const targetPublicKey = await importPublicKey(userInfo.publicKey);
             const sharedSecretBits = await crypto.subtle.deriveBits(
                 { name: "ECDH", public: targetPublicKey },
@@ -151,15 +192,13 @@ socket.on('signal', async (data) => {
                 256
             );
             const sharedSecretBase64 = btoa(String.fromCharCode(...new Uint8Array(sharedSecretBits)));
-            console.log('Auto-derived encryption key for', from);
-            // Create peer entry
             peers[from] = {
                 encryptionKey: sharedSecretBase64,
                 dataChannel: null,
-                peerConnection: null
+                peerConnection: null,
+                walletAddress: null
             };
             console.log('Auto-created peer for', from);
-            // Now create the peer connection as receiver (because we are receiving a signal)
             createPeerConnection(from, true);
         } else {
             console.warn('Cannot create peer: no public key for', from);
@@ -173,7 +212,6 @@ socket.on('signal', async (data) => {
         return;
     }
 
-    // Handle different signal types
     if (signal.type === 'offer') {
         await peer.setRemoteDescription(new RTCSessionDescription(signal));
         const answer = await peer.createAnswer();
@@ -199,11 +237,9 @@ function createPeerConnection(targetId, isReceiver) {
     };
 
     if (!isReceiver) {
-        // Initiator: create data channel
         const channel = peer.createDataChannel('chat');
         setupDataChannel(channel, targetId);
     } else {
-        // Receiver: wait for data channel
         peer.ondatachannel = (event) => {
             setupDataChannel(event.channel, targetId);
         };
@@ -217,6 +253,15 @@ function setupDataChannel(channel, targetId) {
     channel.onopen = () => {
         console.log(`Data channel open with ${targetId}`);
         peers[targetId].dataChannel = channel;
+
+        // Send our wallet address to the peer
+        if (userWallet) {
+            const addressMessage = JSON.stringify({
+                type: 'wallet-address',
+                address: userWallet.address
+            });
+            channel.send(addressMessage);
+        }
     };
     channel.onclose = () => {
         console.log(`Data channel closed with ${targetId}`);
@@ -224,13 +269,11 @@ function setupDataChannel(channel, targetId) {
     };
     channel.onmessage = (event) => {
         const data = event.data;
-        const encryptionKey = peers[targetId].encryptionKey;  // base64 string
+        const encryptionKey = peers[targetId].encryptionKey;
 
-        // Try to parse as JSON (for file transfers)
         try {
             const obj = JSON.parse(data);
             if (obj.type === 'file-meta') {
-                // Prepare to receive a file
                 receivingFile = {
                     name: obj.name,
                     size: obj.size,
@@ -240,10 +283,8 @@ function setupDataChannel(channel, targetId) {
                 };
                 progressDiv.innerHTML += `<div>Receiving file: ${obj.name} (${obj.size} bytes)</div>`;
             } else if (obj.type === 'file-chunk') {
-                // Decrypt chunk using the encryption key (passphrase)
                 const encrypted = obj.data;
                 const decrypted = CryptoJS.AES.decrypt(encrypted, encryptionKey);
-                // Convert WordArray to Uint8Array
                 const decryptedBytes = new Uint8Array(decrypted.sigBytes);
                 for (let i = 0; i < decrypted.sigBytes; i++) {
                     decryptedBytes[i] = (decrypted.words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
@@ -252,8 +293,6 @@ function setupDataChannel(channel, targetId) {
                 receivingFile.received += decryptedBytes.length;
                 const percent = Math.min(100, Math.round((receivingFile.received / receivingFile.size) * 100));
                 progressDiv.innerHTML = `Receiving ${receivingFile.name}: ${percent}%`;
-
-                // If complete, assemble and trigger download
                 if (receivingFile.received >= receivingFile.size) {
                     const blob = new Blob(receivingFile.chunks, { type: receivingFile.mime });
                     const url = URL.createObjectURL(blob);
@@ -265,15 +304,22 @@ function setupDataChannel(channel, targetId) {
                     progressDiv.innerHTML += `<div>File "${receivingFile.name}" received.</div>`;
                     receivingFile = null;
                 }
+            } else if (obj.type === 'wallet-address') {
+                // Store peer's wallet address
+                peers[targetId].walletAddress = obj.address;
+                console.log(`Received wallet address from ${targetId}: ${obj.address}`);
+                const msgDiv = document.createElement('div');
+                msgDiv.textContent = `🔗 Peer's wallet address received.`;
+                messagesDiv.appendChild(msgDiv);
+                updateRecipientField();
             } else {
                 console.log('Unknown message type', obj);
             }
         } catch (e) {
-            // Not JSON -> assume encrypted text message
+            // Text message
             console.log('Received encrypted message:', data.substring(0,50)+'...');
             const bytes = CryptoJS.AES.decrypt(data, encryptionKey);
             const plaintext = bytes.toString(CryptoJS.enc.Utf8);
-            console.log('Decrypted text:', plaintext);
             if (plaintext) {
                 const msgDiv = document.createElement('div');
                 msgDiv.textContent = `Them: ${plaintext}`;
@@ -286,7 +332,7 @@ function setupDataChannel(channel, targetId) {
 }
 
 // ------------------------------------------------------------
-// 3. Sending messages & files
+// 3. Sending messages & files (WebRTC)
 // ------------------------------------------------------------
 sendBtn.addEventListener('click', () => {
     const text = messageInput.value.trim();
@@ -294,13 +340,8 @@ sendBtn.addEventListener('click', () => {
 
     for (let targetId in peers) {
         const channel = peers[targetId].dataChannel;
-        const key = peers[targetId].encryptionKey; // base64 passphrase
+        const key = peers[targetId].encryptionKey;
         if (channel && channel.readyState === 'open') {
-            if (!key) {
-                console.error('Encryption key missing for', targetId);
-                continue;
-            }
-            console.log('Encrypting message with key:', key.substring(0,10)+'...');
             const encrypted = CryptoJS.AES.encrypt(text, key).toString();
             channel.send(encrypted);
             console.log('Sent encrypted message to', targetId);
@@ -313,12 +354,10 @@ sendBtn.addEventListener('click', () => {
     messageInput.value = '';
 });
 
-// Allow Enter to send
 messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendBtn.click();
 });
 
-// File sending
 sendFileBtn.addEventListener('click', () => {
     const file = fileInput.files[0];
     if (!file) {
@@ -328,7 +367,7 @@ sendFileBtn.addEventListener('click', () => {
 
     for (let targetId in peers) {
         const channel = peers[targetId].dataChannel;
-        const key = peers[targetId].encryptionKey; // base64 passphrase
+        const key = peers[targetId].encryptionKey;
         if (channel && channel.readyState === 'open') {
             sendFileViaChannel(channel, file, key);
         }
@@ -336,26 +375,18 @@ sendFileBtn.addEventListener('click', () => {
 });
 
 function sendFileViaChannel(channel, file, encryptionKey) {
-    const CHUNK_SIZE = 64 * 1024; // 64KB
+    const CHUNK_SIZE = 64 * 1024;
     const reader = new FileReader();
     let offset = 0;
 
-    // Send file metadata first
-    const metadata = {
-        type: 'file-meta',
-        name: file.name,
-        size: file.size,
-        mime: file.type
-    };
+    const metadata = { type: 'file-meta', name: file.name, size: file.size, mime: file.type };
     channel.send(JSON.stringify(metadata));
 
     reader.onload = (e) => {
-        // Encrypt the chunk
-        const chunkData = e.target.result; // ArrayBuffer
+        const chunkData = e.target.result;
         const wordArray = CryptoJS.lib.WordArray.create(chunkData);
         const encrypted = CryptoJS.AES.encrypt(wordArray, encryptionKey).toString();
 
-        // Send as a special message
         channel.send(JSON.stringify({
             type: 'file-chunk',
             data: encrypted,
@@ -369,7 +400,6 @@ function sendFileViaChannel(channel, file, encryptionKey) {
         } else {
             progressDiv.innerHTML += `<div>File "${file.name}" sent.</div>`;
         }
-
         const percent = Math.min(100, Math.round((offset / file.size) * 100));
         progressDiv.innerHTML = `Sending ${file.name}: ${percent}%`;
     };
@@ -378,6 +408,323 @@ function sendFileViaChannel(channel, file, encryptionKey) {
         const slice = file.slice(offset, offset + CHUNK_SIZE);
         reader.readAsArrayBuffer(slice);
     }
-
     readNext();
+}
+
+// ------------------------------------------------------------
+// 4. BLE Functions (Offline Mesh) – with dynamic import
+// ------------------------------------------------------------
+async function getBLEPlugin() {
+    if (typeof Capacitor === 'undefined' || !Capacitor.isNative) {
+        return null;
+    }
+    try {
+        const module = await import('@capgo/capacitor-bluetooth-low-energy');
+        return module.BluetoothLowEnergy;
+    } catch (err) {
+        console.error('Failed to load BLE plugin:', err);
+        return null;
+    }
+}
+
+async function initBLE() {
+    const ble = await getBLEPlugin();
+    if (!ble) {
+        console.warn('BLE plugin not available – not in native environment');
+        return false;
+    }
+    try {
+        await ble.initialize();
+        return true;
+    } catch (err) {
+        console.error('BLE init error:', err);
+        return false;
+    }
+}
+
+async function startBLEAdvert() {
+    const ble = await getBLEPlugin();
+    if (!ble || !myUsername || bleAdvertising) return;
+    try {
+        await ble.startAdvertising({
+            deviceName: `Chat_${myUsername}`,
+            services: [BLE_SERVICE_UUID],
+            characteristics: [{
+                uuid: BLE_CHARACTERISTIC_UUID,
+                properties: ['Read', 'Write', 'Notify'],
+                permissions: ['Readable', 'Writable'],
+                value: ''
+            }]
+        });
+        bleAdvertising = true;
+        console.log('BLE advertising started');
+    } catch (err) {
+        console.error('Start advertising failed:', err);
+    }
+}
+
+async function stopBLEAdvert() {
+    const ble = await getBLEPlugin();
+    if (!ble || !bleAdvertising) return;
+    try {
+        await ble.stopAdvertising();
+        bleAdvertising = false;
+        console.log('BLE advertising stopped');
+    } catch (err) {
+        console.error('Stop advertising failed:', err);
+    }
+}
+
+async function startBLEScan() {
+    const ble = await getBLEPlugin();
+    if (!ble || bleScanning) return;
+    try {
+        await ble.startScan({ services: [BLE_SERVICE_UUID] });
+        bleScanning = true;
+        console.log('BLE scan started');
+
+        ble.addListener('deviceScanned', (device) => {
+            console.log('Found device:', device);
+            addDeviceToList(device);
+        });
+    } catch (err) {
+        console.error('Start scan failed:', err);
+    }
+}
+
+async function stopBLEScan() {
+    const ble = await getBLEPlugin();
+    if (!ble || !bleScanning) return;
+    try {
+        await ble.stopScan();
+        bleScanning = false;
+        console.log('BLE scan stopped');
+    } catch (err) {
+        console.error('Stop scan failed:', err);
+    }
+}
+
+function addDeviceToList(device) {
+    if (!nearbyDevicesDiv) return;
+    if (document.getElementById(`device-${device.deviceId}`)) return;
+    const btn = document.createElement('button');
+    btn.id = `device-${device.deviceId}`;
+    btn.textContent = device.name || device.deviceId;
+    btn.onclick = () => connectToBLEDevice(device.deviceId);
+    nearbyDevicesDiv.appendChild(btn);
+}
+
+async function connectToBLEDevice(deviceId) {
+    const ble = await getBLEPlugin();
+    if (!ble) return;
+    if (bleConnectedDeviceId) {
+        alert('Already connected to a BLE device. Disconnect first.');
+        return;
+    }
+    try {
+        await ble.connect({ deviceId });
+        bleConnectedDeviceId = deviceId;
+        console.log('Connected to', deviceId);
+
+        await ble.discoverServices({ deviceId });
+
+        ble.addListener('characteristicChanged', ({ characteristic, value }) => {
+            if (characteristic === BLE_CHARACTERISTIC_UUID) {
+                const encrypted = new TextDecoder().decode(value);
+                const key = getKeyForPeer(deviceId);
+                if (key) {
+                    const bytes = CryptoJS.AES.decrypt(encrypted, key);
+                    const plaintext = bytes.toString(CryptoJS.enc.Utf8);
+                    displayBLEChatMessage(deviceId, plaintext, 'them');
+                } else {
+                    console.warn('No encryption key for this BLE peer');
+                }
+            }
+        });
+
+        // TODO: Implement key exchange over BLE
+    } catch (err) {
+        console.error('BLE connect error:', err);
+    }
+}
+
+async function disconnectBLEDevice() {
+    const ble = await getBLEPlugin();
+    if (!ble || !bleConnectedDeviceId) return;
+    try {
+        await ble.disconnect({ deviceId: bleConnectedDeviceId });
+        bleConnectedDeviceId = null;
+        console.log('Disconnected from BLE device');
+    } catch (err) {
+        console.error('Disconnect error:', err);
+    }
+}
+
+function storeKeyForPeer(peerId, key) {
+    peerKeys[peerId] = key;
+}
+
+function getKeyForPeer(peerId) {
+    return peerKeys[peerId];
+}
+
+function displayBLEChatMessage(peerId, text, sender) {
+    const shortId = peerId.substring(0, 6);
+    const msgDiv = document.createElement('div');
+    msgDiv.textContent = `[BLE ${shortId}] ${sender}: ${text}`;
+    messagesDiv.appendChild(msgDiv);
+}
+
+// BLE UI listeners
+if (enableBLEBtn) {
+    enableBLEBtn.addEventListener('click', async () => {
+        if (!myUsername) {
+            alert('Please join the chat first.');
+            return;
+        }
+        const ble = await getBLEPlugin();
+        if (!ble) {
+            alert('BLE only works on real devices (not in browser)');
+            return;
+        }
+        const perm = await ble.requestPermissions();
+        if (!perm) {
+            alert('Bluetooth permissions required');
+            return;
+        }
+        await startBLEAdvert();
+        await startBLEScan();
+        enableBLEBtn.disabled = true;
+        if (disableBLEBtn) disableBLEBtn.disabled = false;
+        bleEnabled = true;
+    });
+}
+
+if (disableBLEBtn) {
+    disableBLEBtn.addEventListener('click', async () => {
+        await stopBLEAdvert();
+        await stopBLEScan();
+        await disconnectBLEDevice();
+        enableBLEBtn.disabled = false;
+        disableBLEBtn.disabled = true;
+        bleEnabled = false;
+    });
+}
+
+// ------------------------------------------------------------
+// 5. Payment Functions (Privacy-First) – using @hinkal/common
+// ------------------------------------------------------------
+async function deriveWalletFromMasterKey(privateKey) {
+    // Export the raw private key material
+    const exported = await crypto.subtle.exportKey('raw', privateKey);
+    const rawKey = new Uint8Array(exported);
+
+    // Create a deterministic seed
+    const seed = await crypto.subtle.digest('SHA-256', rawKey);
+    const privateKeyHex = Array.from(new Uint8Array(seed.slice(0, 32)))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // Use ethers.Wallet (v5)
+    return new ethers.Wallet('0x' + privateKeyHex);
+}
+
+async function initPrivacySDK() {
+    if (!userWallet) throw new Error('Wallet not initialized');
+    
+    // Ethers v5 provider
+    const provider = new ethers.providers.JsonRpcProvider(currentNetwork.rpcUrl);
+    const signer = userWallet.connect(provider);
+    
+    // Initialize Hinkal using the original working method
+    privacySDK = await prepareEthersHinkal(signer, {
+        disableCaching: true,
+        generateProofRemotely: true
+    });
+
+    // Fetch initial shielded balances
+    await refreshBalances();
+}
+
+async function refreshBalances() {
+    if (!privacySDK) return;
+    try {
+        const balances = await privacySDK.getBalances();
+        shieldedBalances = balances;
+        updateBalanceDisplay();
+    } catch (err) {
+        console.error('Failed to fetch balances:', err);
+    }
+}
+
+function updateBalanceDisplay() {
+    if (!balanceListDiv) return;
+    balanceListDiv.innerHTML = '';
+    for (const [token, balance] of shieldedBalances) {
+        const div = document.createElement('div');
+        // balance is a BigInt; we need to convert to ethers v5's BigNumber for formatting
+        const decimals = token.toLowerCase().includes('usdc') ? 6 : 18;
+        const formatted = ethers.utils.formatUnits(balance.toString(), decimals);
+        div.textContent = `${token}: ${formatted}`;
+        balanceListDiv.appendChild(div);
+    }
+}
+
+// Helper to get token address per network (testnet)
+function getTokenAddress(token, chainId) {
+    // Goerli testnet addresses
+    const addresses = {
+        usdc: '0x07865c6E87B9F70255377e024ace6630C1Eaa37F',
+        usdt: '0x7D4CcE7fB4cDBb702F134e284FfDC8D80B0BF720',
+        dai: '0x11fE4B6AE13d2a6055C8D9cF65c55bac32B5a5e8'
+    };
+    return addresses[token];
+}
+
+// Update recipient field when a peer's wallet address is received
+function updateRecipientField() {
+    const connectedPeerIds = Object.keys(peers).filter(id => peers[id].walletAddress);
+    if (connectedPeerIds.length > 0) {
+        const firstPeerId = connectedPeerIds[0];
+        recipientAddressInput.value = peers[firstPeerId].walletAddress;
+    }
+}
+
+// Send private payment
+if (sendPrivatePaymentBtn) {
+    sendPrivatePaymentBtn.addEventListener('click', async () => {
+        if (!privacySDK) {
+            paymentStatusDiv.textContent = 'Privacy SDK not initialized';
+            return;
+        }
+        const amount = paymentAmountInput.value;
+        const token = tokenSelect.value;
+        const recipient = recipientAddressInput.value;
+
+        if (!amount || !recipient) {
+            alert('Please fill all fields');
+            return;
+        }
+
+        try {
+            const decimals = token === 'usdc' ? 6 : 18;
+            const parsedAmount = ethers.utils.parseUnits(amount, decimals);
+            
+            // Convert to BigInt as Hinkal expects
+            const amountBigInt = parsedAmount.toBigInt();
+
+            const tokenAddresses = [getTokenAddress(token, currentNetwork.chainId)];
+            const amounts = [amountBigInt];
+
+            const tx = await privacySDK.deposit(tokenAddresses, amounts);
+            paymentStatusDiv.innerHTML = `✅ Payment sent! <a href="https://goerli.etherscan.io/tx/${tx.hash}" target="_blank">View</a>`;
+            setTimeout(refreshBalances, 5000);
+        } catch (err) {
+            paymentStatusDiv.textContent = `❌ Error: ${err.message}`;
+        }
+    });
+}
+
+// Refresh balances button
+if (refreshBalancesBtn) {
+    refreshBalancesBtn.addEventListener('click', refreshBalances);
 }
