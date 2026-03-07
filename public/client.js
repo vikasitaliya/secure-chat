@@ -1,8 +1,6 @@
-// public/client.js – Full version with BLE & Private Payments + Wallet Handshake
-// Uses @hinkal/common (original working package) and ethers v5
-import { prepareEthersHinkal } from '@hinkal/common/providers/prepareEthersHinkal';
-
-const socket = io('https://secure-chat-jqnr.onrender.com'); // Replace with your Render URL
+// public/client.js – Ethers v5, basic token transfers (no Hinkal)
+// Using local server to avoid CORS
+const socket = io('http://localhost:3000'); // Use local server for development
 
 // ---------- Core Chat Variables ----------
 let myUsername = null;
@@ -18,18 +16,16 @@ let bleScanning = false;
 let bleConnectedDeviceId = null;
 const peerKeys = {};           // Store encryption keys for BLE peers (keyed by deviceId)
 
-// BLE service UUIDs
 const BLE_SERVICE_UUID = '12345678-1234-1234-1234-123456789abc';
 const BLE_CHARACTERISTIC_UUID = 'abcdef01-1234-1234-1234-123456789abc';
 
 // ---------- Payment State ----------
 let userWallet = null;
-let privacySDK = null;
-let shieldedBalances = new Map();
+let provider = null;
 let currentNetwork = {
-    chainId: 5,                     // Goerli
-    name: 'Goerli',
-    rpcUrl: 'https://goerli.infura.io/v3/40544311a68c4b4e83ae8ffb74aedaba' // Your Infura key
+    chainId: 11155111,           // Sepolia chain ID
+    name: 'Sepolia',
+    rpcUrl: '/rpc'               // still using your proxy
 };
 
 // DOM elements
@@ -44,17 +40,11 @@ const sendBtn = document.getElementById('sendBtn');
 const fileInput = document.getElementById('fileInput');
 const sendFileBtn = document.getElementById('sendFileBtn');
 const progressDiv = document.getElementById('progress');
-
-// BLE DOM elements
 const enableBLEBtn = document.getElementById('enableBLEBtn');
 const disableBLEBtn = document.getElementById('disableBLEBtn');
 const nearbyDevicesDiv = document.getElementById('nearbyDevices');
-
-// Payment DOM elements
 const walletAddressSpan = document.getElementById('wallet-address');
 const networkNameSpan = document.getElementById('network-name');
-const balanceListDiv = document.getElementById('balance-list');
-const refreshBalancesBtn = document.getElementById('refresh-balances');
 const tokenSelect = document.getElementById('token-select');
 const paymentAmountInput = document.getElementById('payment-amount');
 const recipientAddressInput = document.getElementById('recipient-address');
@@ -62,33 +52,33 @@ const sendPrivatePaymentBtn = document.getElementById('send-private-payment');
 const paymentStatusDiv = document.getElementById('payment-status');
 
 // ------------------------------------------------------------
-// 1. Key generation & exchange (ECDH) – extractable
+// 1. Key generation & exchange (ECDH) – extractable with debug
 // ------------------------------------------------------------
 joinBtn.addEventListener('click', async () => {
     const name = usernameInput.value.trim();
     if (!name) return;
     myUsername = name;
 
-    // Generate ECDH key pair (P-256 curve) – extractable for wallet derivation
+    console.log('Generating ECDH key...');
     myKeyPair = await crypto.subtle.generateKey(
-        {
-            name: "ECDH",
-            namedCurve: "P-256"
-        },
-        true,
+        { name: "ECDH", namedCurve: "P-256" },
+        true, // MUST be extractable
         ["deriveKey", "deriveBits"]
     );
+    console.log('Key generated:', myKeyPair);
 
     // Derive blockchain wallet from master key
     try {
+        console.log('Deriving wallet from key...');
         userWallet = await deriveWalletFromMasterKey(myKeyPair.privateKey);
+        console.log('Wallet derived:', userWallet.address);
         walletAddressSpan.textContent = userWallet.address;
         networkNameSpan.textContent = currentNetwork.name;
 
-        // Initialize privacy SDK (Hinkal)
-        await initPrivacySDK();
+        // Initialize provider
+        provider = new ethers.providers.JsonRpcProvider(currentNetwork.rpcUrl);
     } catch (err) {
-        console.error('Wallet/Privacy init failed:', err);
+        console.error('Wallet derivation failed:', err);
         walletAddressSpan.textContent = 'Error';
     }
 
@@ -99,11 +89,9 @@ joinBtn.addEventListener('click', async () => {
     socket.emit('join', { username: name, publicKey: publicKeyBase64 });
     loginDiv.style.display = 'none';
     chatDiv.style.display = 'block';
-
-    // BLE will be initialized only when user clicks "Enable BLE Mode"
 });
 
-// Receive updated list of online users (including their public keys)
+// Receive updated list of online users
 socket.on('user-list', (users) => {
     console.log('Received user list:', users);
     lastUserList = users;
@@ -120,7 +108,7 @@ socket.on('user-list', (users) => {
     });
 });
 
-// Start a chat with a specific user (called when clicking on a name)
+// Start a chat with a specific user
 async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
     console.log('Starting chat with', targetUsername, targetId);
     if (peers[targetId]) {
@@ -412,7 +400,7 @@ function sendFileViaChannel(channel, file, encryptionKey) {
 }
 
 // ------------------------------------------------------------
-// 4. BLE Functions (Offline Mesh) – with dynamic import
+// 4. BLE Functions – dynamic import only
 // ------------------------------------------------------------
 async function getBLEPlugin() {
     if (typeof Capacitor === 'undefined' || !Capacitor.isNative) {
@@ -541,8 +529,6 @@ async function connectToBLEDevice(deviceId) {
                 }
             }
         });
-
-        // TODO: Implement key exchange over BLE
     } catch (err) {
         console.error('BLE connect error:', err);
     }
@@ -612,66 +598,47 @@ if (disableBLEBtn) {
 }
 
 // ------------------------------------------------------------
-// 5. Payment Functions (Privacy-First) – using @hinkal/common
+// 5. Payment Functions – Simple ERC20 transfers (ethers v5)
 // ------------------------------------------------------------
 async function deriveWalletFromMasterKey(privateKey) {
-    // Export the raw private key material
-    const exported = await crypto.subtle.exportKey('raw', privateKey);
-    const rawKey = new Uint8Array(exported);
-
-    // Create a deterministic seed
-    const seed = await crypto.subtle.digest('SHA-256', rawKey);
-    const privateKeyHex = Array.from(new Uint8Array(seed.slice(0, 32)))
-        .map(b => b.toString(16).padStart(2, '0')).join('');
-
-    // Use ethers.Wallet (v5)
-    return new ethers.Wallet('0x' + privateKeyHex);
-}
-
-async function initPrivacySDK() {
-    if (!userWallet) throw new Error('Wallet not initialized');
-    
-    // Ethers v5 provider
-    const provider = new ethers.providers.JsonRpcProvider(currentNetwork.rpcUrl);
-    const signer = userWallet.connect(provider);
-    
-    // Initialize Hinkal using the original working method
-    privacySDK = await prepareEthersHinkal(signer, {
-        disableCaching: true,
-        generateProofRemotely: true
-    });
-
-    // Fetch initial shielded balances
-    await refreshBalances();
-}
-
-async function refreshBalances() {
-    if (!privacySDK) return;
+    console.log('deriveWalletFromMasterKey called with key type:', privateKey.constructor.name);
     try {
-        const balances = await privacySDK.getBalances();
-        shieldedBalances = balances;
-        updateBalanceDisplay();
+        // Export as JWK (JSON Web Key)
+        const jwk = await crypto.subtle.exportKey('jwk', privateKey);
+        console.log('JWK exported:', jwk);
+        
+        // The private key is in the 'd' field (base64url encoded)
+        const privateBase64Url = jwk.d;
+        // Convert base64url to base64
+        const privateBase64 = privateBase64Url.replace(/-/g, '+').replace(/_/g, '/');
+        // Decode base64 to raw bytes
+        const privateKeyRaw = Uint8Array.from(atob(privateBase64), c => c.charCodeAt(0));
+        
+        // Create a seed from the raw private key
+        const seed = await crypto.subtle.digest('SHA-256', privateKeyRaw);
+        const privateKeyHex = Array.from(new Uint8Array(seed.slice(0, 32)))
+            .map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        return new ethers.Wallet('0x' + privateKeyHex);
     } catch (err) {
-        console.error('Failed to fetch balances:', err);
+        console.error('Error exporting key:', err);
+        throw err;
     }
 }
 
-function updateBalanceDisplay() {
-    if (!balanceListDiv) return;
-    balanceListDiv.innerHTML = '';
-    for (const [token, balance] of shieldedBalances) {
-        const div = document.createElement('div');
-        // balance is a BigInt; we need to convert to ethers v5's BigNumber for formatting
-        const decimals = token.toLowerCase().includes('usdc') ? 6 : 18;
-        const formatted = ethers.utils.formatUnits(balance.toString(), decimals);
-        div.textContent = `${token}: ${formatted}`;
-        balanceListDiv.appendChild(div);
-    }
-}
-
-// Helper to get token address per network (testnet)
+// Helper to get token address per network
+// Helper to get token address per network
 function getTokenAddress(token, chainId) {
-    // Goerli testnet addresses
+    // Sepolia testnet addresses
+    if (chainId === 11155111) {
+        const addresses = {
+            usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // official Sepolia USDC
+            usdt: '', // no official USDT on Sepolia – you can leave empty or use a mock
+            dai: ''   // no official DAI on Sepolia
+        };
+        return addresses[token];
+    }
+    // Fallback to Goerli (if needed)
     const addresses = {
         usdc: '0x07865c6E87B9F70255377e024ace6630C1Eaa37F',
         usdt: '0x7D4CcE7fB4cDBb702F134e284FfDC8D80B0BF720',
@@ -679,8 +646,7 @@ function getTokenAddress(token, chainId) {
     };
     return addresses[token];
 }
-
-// Update recipient field when a peer's wallet address is received
+// Update recipient field when peer's address is received
 function updateRecipientField() {
     const connectedPeerIds = Object.keys(peers).filter(id => peers[id].walletAddress);
     if (connectedPeerIds.length > 0) {
@@ -689,13 +655,9 @@ function updateRecipientField() {
     }
 }
 
-// Send private payment
+// Send ERC20 token
 if (sendPrivatePaymentBtn) {
     sendPrivatePaymentBtn.addEventListener('click', async () => {
-        if (!privacySDK) {
-            paymentStatusDiv.textContent = 'Privacy SDK not initialized';
-            return;
-        }
         const amount = paymentAmountInput.value;
         const token = tokenSelect.value;
         const recipient = recipientAddressInput.value;
@@ -705,26 +667,32 @@ if (sendPrivatePaymentBtn) {
             return;
         }
 
+        if (!provider || !userWallet) {
+            paymentStatusDiv.textContent = 'Wallet not initialized';
+            return;
+        }
+
         try {
             const decimals = token === 'usdc' ? 6 : 18;
             const parsedAmount = ethers.utils.parseUnits(amount, decimals);
-            
-            // Convert to BigInt as Hinkal expects
-            const amountBigInt = parsedAmount.toBigInt();
 
-            const tokenAddresses = [getTokenAddress(token, currentNetwork.chainId)];
-            const amounts = [amountBigInt];
+            const tokenAddress = getTokenAddress(token, currentNetwork.chainId);
+            const signer = userWallet.connect(provider);
 
-            const tx = await privacySDK.deposit(tokenAddresses, amounts);
-            paymentStatusDiv.innerHTML = `✅ Payment sent! <a href="https://goerli.etherscan.io/tx/${tx.hash}" target="_blank">View</a>`;
-            setTimeout(refreshBalances, 5000);
+            // ERC20 ABI for transfer
+            const abi = [
+                'function transfer(address to, uint256 amount) returns (bool)',
+                'function decimals() view returns (uint8)'
+            ];
+            const tokenContract = new ethers.Contract(tokenAddress, abi, signer);
+
+            const tx = await tokenContract.transfer(recipient, parsedAmount);
+            paymentStatusDiv.innerHTML = `⏳ Transaction sent: <a href="https://goerli.etherscan.io/tx/${tx.hash}" target="_blank">${tx.hash}</a>`;
+            await tx.wait();
+            paymentStatusDiv.innerHTML = `✅ Payment confirmed! <a href="https://goerli.etherscan.io/tx/${tx.hash}" target="_blank">View</a>`;
         } catch (err) {
+            console.error('Payment error:', err);
             paymentStatusDiv.textContent = `❌ Error: ${err.message}`;
         }
     });
-}
-
-// Refresh balances button
-if (refreshBalancesBtn) {
-    refreshBalancesBtn.addEventListener('click', refreshBalances);
 }
