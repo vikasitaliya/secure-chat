@@ -235,6 +235,13 @@ function createPeerConnection(targetId, isReceiver) {
 }
 
 function setupDataChannel(channel, targetId) {
+    // Prevent double attachment of the same handler
+    if (channel._messageHandlerAttached) {
+        console.log(`⚠️ Handler already attached for ${targetId}, skipping`);
+        return;
+    }
+    channel._messageHandlerAttached = true;
+
     console.log(`🔧 Setting up data channel for ${targetId}, readyState: ${channel.readyState}`);
 
     channel.onopen = () => {
@@ -257,7 +264,7 @@ function setupDataChannel(channel, targetId) {
         console.error(`🔥 Data channel ERROR with ${targetId}:`, err);
     };
 
-    // Message handler – defined once and attached both ways
+    // Message handler
     const messageHandler = (event) => {
         console.log(`📥 MESSAGE from ${targetId}, data: ${event.data.substring(0, 100)}${event.data.length > 100 ? '...' : ''}`);
 
@@ -332,7 +339,7 @@ function setupDataChannel(channel, targetId) {
     };
 
     channel.addEventListener('message', messageHandler);
-    console.log(`✅ Handlers attached for ${targetId}`);
+    console.log(`✅ Handler attached for ${targetId}`);
 }
 
 // ------------------------------------------------------------
