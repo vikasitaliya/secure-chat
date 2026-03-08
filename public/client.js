@@ -332,7 +332,6 @@ function setupDataChannel(channel, targetId) {
     };
 
     channel.addEventListener('message', messageHandler);
-    channel.onmessage = messageHandler; // fallback
     console.log(`✅ Handlers attached for ${targetId}`);
 }
 
