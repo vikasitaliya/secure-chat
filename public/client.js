@@ -578,7 +578,7 @@ if (disableBLEBtn) {
 }
 
 // ------------------------------------------------------------
-// 5. Payment Functions
+// 5. Payment Functions 43434 4333f
 // ------------------------------------------------------------
 async function deriveWalletFromMasterKey(privateKey) {
     const jwk = await crypto.subtle.exportKey('jwk', privateKey);
