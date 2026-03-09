@@ -702,7 +702,7 @@ if (sendPrivatePaymentBtn) {
     });
 }
 
-// Refresh balances button listener
+// Refresh balances button listener ok
 if (refreshBalancesBtn) {
     refreshBalancesBtn.addEventListener('click', refreshBalances);
 }
