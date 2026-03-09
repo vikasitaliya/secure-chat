@@ -12,7 +12,7 @@ app.use(express.json());
 
 // ---------- Hyperswitch Configuration ----------
 const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTVlnDlvpxk7uE1YNvl';   // Your sandbox secret key
-const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4'; // Your sandbox publishable key
+const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4'; // Your sandbox publishable key (not used on server)
 const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';      // Sandbox environment
 
 function getHyperswitchHeaders() {
@@ -25,6 +25,7 @@ function getHyperswitchHeaders() {
 // Create a payment intent
 app.post('/api/create-payment', async (req, res) => {
     try {
+        console.log('Payment request body:', req.body);
         const { amount, currency, customerId, email } = req.body;
         const paymentData = {
             amount: amount * 100, // cents
@@ -40,6 +41,7 @@ app.post('/api/create-payment', async (req, res) => {
             headers: getHyperswitchHeaders()
         });
         const data = response.data;
+        console.log('Hyperswitch response:', data);
         res.json({
             clientSecret: data.client_secret,
             paymentId: data.id
