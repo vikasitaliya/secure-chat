@@ -1,4 +1,4 @@
-// public/client.js – FINAL VERSION with fixed Hyperswitch confirm button
+// public/client.js – FINAL VERSION with fixed Hyperswitch integration
 const socket = io('http://localhost:3000');
 
 // ---------- Core Chat ----------
@@ -614,11 +614,18 @@ if (hyperswitchPayBtn) {
                     email: `${userWallet.address}@example.com`
                 })
             });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Payment creation failed');
+            }
+
             const data = await response.json();
             if (!data.clientSecret) throw new Error('No client secret received');
+            console.log('Client secret received:', data.clientSecret);
             hyperswitchStatus.textContent = '';
 
-            // Initialize Hyperswitch
+            // Initialize Hyperswitch with the client secret
             hyperswitchInstance = Hyper(data.clientSecret, {
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
             });
