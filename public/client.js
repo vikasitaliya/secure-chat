@@ -1,4 +1,4 @@
-// public/client.js – FINAL VERSION with Hyperswitch error handling
+// public/client.js – FINAL VERSION with fixed Hyperswitch confirm button
 const socket = io('http://localhost:3000');
 
 // ---------- Core Chat ----------
@@ -54,8 +54,25 @@ const hyperswitchElementDiv = document.getElementById('hyperswitch-payment-eleme
 let hyperswitchInstance = null;
 let hyperswitchElements = null;
 
+// Helper to wait for Hyper global (in case script loads slowly)
+function waitForHyper(timeout = 5000) {
+    return new Promise((resolve, reject) => {
+        if (typeof Hyper !== 'undefined') return resolve();
+        const start = Date.now();
+        const interval = setInterval(() => {
+            if (typeof Hyper !== 'undefined') {
+                clearInterval(interval);
+                resolve();
+            } else if (Date.now() - start > timeout) {
+                clearInterval(interval);
+                reject(new Error('Hyper SDK not loaded in time'));
+            }
+        }, 100);
+    });
+}
+
 // ------------------------------------------------------------
-// 1. Key generation & wallet derivation (unchanged)
+// 1. Key generation & wallet derivation
 // ------------------------------------------------------------
 joinBtn.addEventListener('click', async () => {
     const name = usernameInput.value.trim();
@@ -132,7 +149,7 @@ async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
 }
 
 // ------------------------------------------------------------
-// 2. WebRTC Signaling (unchanged)
+// 2. WebRTC Signaling
 // ------------------------------------------------------------
 socket.on('signal', async (data) => {
     const { from, signal } = data;
@@ -254,7 +271,7 @@ function setupDataChannel(channel, targetId) {
 }
 
 // ------------------------------------------------------------
-// 3. Sending messages & files (unchanged)
+// 3. Sending messages & files
 // ------------------------------------------------------------
 sendBtn.addEventListener('click', () => {
     const text = messageInput.value.trim();
@@ -564,13 +581,15 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (with SDK check)
+// 6. Hyperswitch Global Payment Integration (FIXED)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
-        // Check if Hyperswitch SDK is loaded
-        if (typeof Hyper === 'undefined') {
-            hyperswitchStatus.textContent = '❌ Hyperswitch SDK not loaded. Check your network or try a different CDN.';
+        try {
+            // Wait for Hyper SDK to be ready
+            await waitForHyper(5000);
+        } catch (err) {
+            hyperswitchStatus.textContent = '❌ Hyperswitch SDK not loaded. Check that lib/hyperswitch.js exists.';
             return;
         }
 
@@ -580,9 +599,10 @@ if (hyperswitchPayBtn) {
 
         try {
             hyperswitchStatus.textContent = 'Creating payment...';
-            // Remove any existing confirm button
+            // Remove any existing confirm button and clear previous payment element
             const oldConfirm = document.getElementById('hyperswitch-confirm-button');
             if (oldConfirm) oldConfirm.remove();
+            hyperswitchElementDiv.innerHTML = ''; // Clear old payment element
 
             const response = await fetch('/api/create-payment', {
                 method: 'POST',
@@ -618,7 +638,7 @@ if (hyperswitchPayBtn) {
             confirmBtn.style.marginTop = '10px';
             hyperswitchElementDiv.after(confirmBtn);
 
-            // Attach confirm handler (one-time listener)
+            // Attach confirm handler (NOT once: true, so it can be reused)
             confirmBtn.addEventListener('click', async function confirmHandler() {
                 confirmBtn.disabled = true;
                 hyperswitchStatus.textContent = 'Processing...';
@@ -632,15 +652,17 @@ if (hyperswitchPayBtn) {
                         hyperswitchStatus.textContent = '❌ Payment failed: ' + error.message;
                         confirmBtn.disabled = false;
                     } else {
-                        // Redirect will happen
+                        // Payment successful – redirect will happen
                         hyperswitchStatus.textContent = '✅ Payment successful!';
+                        // Optionally remove confirm button
+                        confirmBtn.remove();
                     }
                 } catch (err) {
                     console.error('Confirmation error:', err);
                     hyperswitchStatus.textContent = '❌ Error: ' + err.message;
                     confirmBtn.disabled = false;
                 }
-            }, { once: true });
+            }); // No { once: true }
 
         } catch (err) {
             console.error('Hyperswitch init error:', err);
