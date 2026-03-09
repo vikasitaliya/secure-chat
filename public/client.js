@@ -624,13 +624,12 @@ if (hyperswitchPayBtn) {
             hyperswitchStatus.textContent = '';
 
             // 1. Initialize Hyper
-            console.log('🟢 1. Initializing Hyper...');
-            hyperswitchInstance = Hyper({
-                clientSecret: data.clientSecret,
-                fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
-            });
-            console.log('✅ Hyper instance created');
-
+           // Initialize Hyperswitch with client secret (first argument) and options (second)
+           hyperswitchInstance = Hyper(data.clientSecret, {
+               fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
+           });
+           console.log('✅ Hyper instance created');
+           
             // 2. Create elements
             console.log('🟢 2. Creating elements...');
             hyperswitchElements = hyperswitchInstance.elements();
