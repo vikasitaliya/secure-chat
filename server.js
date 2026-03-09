@@ -11,9 +11,9 @@ app.use(express.static('public'));
 app.use(express.json());
 
 // ---------- Hyperswitch Configuration ----------
-const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTVlnDlvpxk7uE1YNvl';        // Replace with your sandbox key
-const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';   // Replace with your publishable key
-const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';
+const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTVlnDlvpxk7uE1YNvl';        // Replace with your sandbox secret key
+const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';   // Replace with your sandbox publishable key
+const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';      // Sandbox environment
 
 function getHyperswitchHeaders() {
     return {
@@ -50,7 +50,7 @@ app.post('/api/create-payment', async (req, res) => {
     }
 });
 
-// ---------- Ethereum RPC Proxy ----------
+// ---------- Ethereum RPC Proxy (Sepolia) ----------
 app.post('/rpc', async (req, res) => {
     try {
         const endpoints = [
