@@ -10,6 +10,47 @@ const io = new Server(server);
 app.use(express.static('public'));
 app.use(express.json());
 
+// ---------- Hyperswitch Configuration ----------
+const HYPERSWITCH_API_KEY = 'YOUR_HYPERSWITCH_API_KEY';        // Replace with your sandbox key
+const HYPERSWITCH_PUBLISHABLE_KEY = 'YOUR_PUBLISHABLE_KEY';   // Replace with your publishable key
+const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';
+
+function getHyperswitchHeaders() {
+    return {
+        'Content-Type': 'application/json',
+        'api-key': HYPERSWITCH_API_KEY,
+    };
+}
+
+// Create a payment intent
+app.post('/api/create-payment', async (req, res) => {
+    try {
+        const { amount, currency, customerId, email } = req.body;
+        const paymentData = {
+            amount: amount * 100, // cents
+            currency: currency || 'USD',
+            confirm: false,
+            capture_method: 'automatic',
+            customer_id: customerId || `cust_${Date.now()}`,
+            email: email || 'customer@example.com',
+            metadata: { order_id: `order_${Date.now()}` }
+        };
+
+        const response = await axios.post(`${HYPERSWITCH_URL}/payments`, paymentData, {
+            headers: getHyperswitchHeaders()
+        });
+        const data = response.data;
+        res.json({
+            clientSecret: data.client_secret,
+            paymentId: data.id
+        });
+    } catch (err) {
+        console.error('Payment creation error:', err.response?.data || err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------- Ethereum RPC Proxy ----------
 app.post('/rpc', async (req, res) => {
     try {
         const endpoints = [
@@ -35,6 +76,7 @@ app.post('/rpc', async (req, res) => {
     }
 });
 
+// ---------- Socket.io Signaling ----------
 let users = [];
 
 io.on('connection', (socket) => {
