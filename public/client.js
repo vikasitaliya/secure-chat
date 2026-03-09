@@ -586,7 +586,6 @@ if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBala
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
         try {
-            // Wait for Hyper SDK to be ready
             await waitForHyper(5000);
         } catch (err) {
             hyperswitchStatus.textContent = '❌ Hyperswitch SDK not loaded. Check that lib/hyperswitch.js exists.';
@@ -599,7 +598,6 @@ if (hyperswitchPayBtn) {
 
         try {
             hyperswitchStatus.textContent = 'Creating payment...';
-            // Remove any existing confirm button and clear previous payment element
             const oldConfirm = document.getElementById('hyperswitch-confirm-button');
             if (oldConfirm) oldConfirm.remove();
             hyperswitchElementDiv.innerHTML = ''; // Clear old payment element
@@ -622,22 +620,31 @@ if (hyperswitchPayBtn) {
 
             const data = await response.json();
             if (!data.clientSecret) throw new Error('No client secret received');
-            console.log('Client secret received:', data.clientSecret);
+            console.log('✅ Client secret received:', data.clientSecret);
             hyperswitchStatus.textContent = '';
 
-            // Initialize Hyperswitch with the client secret    
+            // Initialize Hyperswitch
+            console.log('Initializing Hyper...');
             hyperswitchInstance = Hyper({
                 clientSecret: data.clientSecret,
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
             });
+            console.log('Hyper instance created');
 
-            // Create and mount payment element
+            console.log('Creating elements...');
             hyperswitchElements = hyperswitchInstance.elements();
+            console.log('Elements created');
+
+            console.log('Creating payment element...');
             const paymentElement = hyperswitchElements.create('payment', {
                 layout: 'tabs',
                 wallets: { walletReturnUrl: window.location.origin + '/payment-success.html', style: { theme: 'dark' } },
             });
+            console.log('Payment element created');
+
+            console.log('Attempting to mount...');
             paymentElement.mount('#hyperswitch-payment-element');
+            console.log('✅ Mount succeeded – payment form should be visible.');
 
             // Create confirm button
             const confirmBtn = document.createElement('button');
@@ -646,7 +653,6 @@ if (hyperswitchPayBtn) {
             confirmBtn.style.marginTop = '10px';
             hyperswitchElementDiv.after(confirmBtn);
 
-            // Attach confirm handler (NOT once: true, so it can be reused)
             confirmBtn.addEventListener('click', async function confirmHandler() {
                 confirmBtn.disabled = true;
                 hyperswitchStatus.textContent = 'Processing...';
@@ -660,9 +666,7 @@ if (hyperswitchPayBtn) {
                         hyperswitchStatus.textContent = '❌ Payment failed: ' + error.message;
                         confirmBtn.disabled = false;
                     } else {
-                        // Payment successful – redirect will happen
                         hyperswitchStatus.textContent = '✅ Payment successful!';
-                        // Optionally remove confirm button
                         confirmBtn.remove();
                     }
                 } catch (err) {
@@ -670,10 +674,10 @@ if (hyperswitchPayBtn) {
                     hyperswitchStatus.textContent = '❌ Error: ' + err.message;
                     confirmBtn.disabled = false;
                 }
-            }); // No { once: true }
+            });
 
         } catch (err) {
-            console.error('Hyperswitch init error:', err);
+            console.error('❌ Hyperswitch init error:', err);
             hyperswitchStatus.textContent = '❌ Error: ' + err.message;
         }
     });
