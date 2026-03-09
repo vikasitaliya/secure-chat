@@ -12,7 +12,7 @@ app.use(express.json());
 
 // ---------- Hyperswitch Configuration ----------
 const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTVlnDlvpxk7uE1YNvl';        // Replace with your sandbox key
-const HYPERSWITCH_PUBLISHABLE_KEY = 'YOUR_PUBLISHABLE_KEY';   // Replace with your publishable key
+const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';   // Replace with your publishable key
 const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';
 
 function getHyperswitchHeaders() {
