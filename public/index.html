@@ -13,7 +13,11 @@
         #nearbyDevices button { margin: 5px; }
         #payment-status { margin-top: 10px; font-size: 0.9em; }
         #testnet-faucet { font-size: 0.9em; }
+        #hyperswitch-payment-element { margin: 10px 0; }
+        #hyperswitch-pay-button, #hyperswitch-confirm-button { margin: 5px 0; }
     </style>
+    <!-- Hyperswitch SDK -->
+    <script src="https://js.hyperswitch.io/v1/hyperswitch.js"></script>
 </head>
 <body>
     <h1>Secure Chat + Private Payments (AES-256 Encrypted)</h1>
@@ -58,8 +62,9 @@
                 <button id="refresh-balances">Refresh</button>
             </div>
             
+            <!-- Existing USDC Payment -->
             <div id="payment-actions">
-                <h4>Send Private Payment</h4>
+                <h4>Send Private Payment (USDC)</h4>
                 <select id="token-select">
                     <option value="usdc">USDC</option>
                     <option value="usdt">USDT</option>
@@ -71,6 +76,13 @@
                 <div id="payment-status"></div>
             </div>
             
+            <!-- Hyperswitch Global Payment -->
+            <hr/>
+            <h4>🌐 Global Payments (Hyperswitch)</h4>
+            <button id="hyperswitch-pay-button">Pay with Hyperswitch</button>
+            <div id="hyperswitch-payment-element"></div>
+            <div id="hyperswitch-status"></div>
+
             <div id="testnet-faucet">
                 <p><strong>Testnet Mode</strong> - Get free test tokens:</p>
                 <a href="https://sepolia-faucet.pk910.de/" target="_blank">Sepolia ETH Faucet</a> | 
@@ -79,7 +91,7 @@
         </div>
     </div>
 
-    <!-- Scripts – all local -->
+    <!-- Scripts -->
     <script src="/socket.io/socket.io.js"></script>
     <script src="lib/crypto-js.min.js"></script>
     <script src="lib/ethers.min.js"></script>
