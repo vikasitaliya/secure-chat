@@ -1,4 +1,4 @@
-// public/client.js – FINAL WORKING VERSION with retry on signal
+// public/client.js – FINAL VERSION with balance display
 const socket = io('http://localhost:3000');
 
 // ---------- Core Chat ----------
@@ -48,6 +48,8 @@ const paymentAmountInput = document.getElementById('payment-amount');
 const recipientAddressInput = document.getElementById('recipient-address');
 const sendPrivatePaymentBtn = document.getElementById('send-private-payment');
 const paymentStatusDiv = document.getElementById('payment-status');
+const balanceListDiv = document.getElementById('balance-list');
+const refreshBalancesBtn = document.getElementById('refresh-balances');
 
 // ------------------------------------------------------------
 // 1. Key generation & wallet derivation
@@ -69,6 +71,7 @@ joinBtn.addEventListener('click', async () => {
         walletAddressSpan.textContent = userWallet.address;
         networkNameSpan.textContent = currentNetwork.name;
         provider = new ethers.providers.JsonRpcProvider(currentNetwork.rpcUrl);
+        await refreshBalances(); // <-- load balances on join
     } catch (err) {
         console.error('Wallet derivation failed:', err);
         walletAddressSpan.textContent = 'Error';
@@ -82,6 +85,7 @@ joinBtn.addEventListener('click', async () => {
     chatDiv.style.display = 'block';
 });
 
+// Receive updated list of online users
 socket.on('user-list', (users) => {
     console.log('📋 Received user list:', users);
     lastUserList = users;
@@ -148,7 +152,7 @@ async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
 }
 
 // ------------------------------------------------------------
-// 2. WebRTC Signaling with retry
+// 2. WebRTC Signaling
 // ------------------------------------------------------------
 socket.on('signal', async (data) => {
     const { from, signal } = data;
@@ -156,12 +160,9 @@ socket.on('signal', async (data) => {
 
     if (!peers[from]) {
         console.log('No peer entry for', from, 'attempting to create from user list');
-        
-        // Try to get user info, with retry if not immediately available
         let userInfo = lastUserList.find(u => u.id === from);
         let retries = 0;
         while (!userInfo && retries < 10) {
-            console.log(`Retry ${retries + 1}: waiting for user list...`);
             await new Promise(resolve => setTimeout(resolve, 200));
             userInfo = lastUserList.find(u => u.id === from);
             retries++;
@@ -235,7 +236,7 @@ function createPeerConnection(targetId, isReceiver) {
 }
 
 function setupDataChannel(channel, targetId) {
-    // Prevent double attachment of the same handler
+    // Prevent double attachment
     if (channel._messageHandlerAttached) {
         console.log(`⚠️ Handler already attached for ${targetId}, skipping`);
         return;
@@ -264,7 +265,6 @@ function setupDataChannel(channel, targetId) {
         console.error(`🔥 Data channel ERROR with ${targetId}:`, err);
     };
 
-    // Message handler
     const messageHandler = (event) => {
         console.log(`📥 MESSAGE from ${targetId}, data: ${event.data.substring(0, 100)}${event.data.length > 100 ? '...' : ''}`);
 
@@ -584,7 +584,7 @@ if (disableBLEBtn) {
 }
 
 // ------------------------------------------------------------
-// 5. Payment Functions 43434 4333f
+// 5. Payment Functions
 // ------------------------------------------------------------
 async function deriveWalletFromMasterKey(privateKey) {
     const jwk = await crypto.subtle.exportKey('jwk', privateKey);
@@ -599,7 +599,11 @@ async function deriveWalletFromMasterKey(privateKey) {
 
 function getTokenAddress(token, chainId) {
     if (chainId === 11155111) {
-        const addresses = { usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', usdt: '', dai: '' };
+        const addresses = {
+            usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+            usdt: '',  // not available on Sepolia
+            dai: ''    // not available on Sepolia
+        };
         return addresses[token];
     }
     const addresses = {
@@ -617,6 +621,56 @@ function updateRecipientField() {
     }
 }
 
+// NEW: Refresh and display token balances
+async function refreshBalances() {
+    if (!provider || !userWallet) {
+        console.log('Wallet or provider not ready');
+        return;
+    }
+
+    if (!balanceListDiv) return;
+    balanceListDiv.innerHTML = 'Loading balances...';
+
+    const tokens = [
+        { symbol: 'USDC', address: getTokenAddress('usdc', currentNetwork.chainId) },
+        { symbol: 'USDT', address: getTokenAddress('usdt', currentNetwork.chainId) },
+        { symbol: 'DAI', address: getTokenAddress('dai', currentNetwork.chainId) }
+    ];
+
+    for (const token of tokens) {
+        if (!token.address) continue;
+        try {
+            const tokenContract = new ethers.Contract(
+                token.address,
+                ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)'],
+                provider
+            );
+            const balance = await tokenContract.balanceOf(userWallet.address);
+            const decimals = await tokenContract.decimals();
+            const formatted = ethers.utils.formatUnits(balance, decimals);
+            const div = document.createElement('div');
+            div.textContent = `${token.symbol}: ${formatted}`;
+            balanceListDiv.appendChild(div);
+        } catch (err) {
+            console.error(`Error fetching ${token.symbol} balance:`, err);
+            const div = document.createElement('div');
+            div.textContent = `${token.symbol}: Error`;
+            balanceListDiv.appendChild(div);
+        }
+    }
+
+    try {
+        const ethBalance = await provider.getBalance(userWallet.address);
+        const ethFormatted = ethers.utils.formatEther(ethBalance);
+        const div = document.createElement('div');
+        div.textContent = `ETH: ${ethFormatted}`;
+        balanceListDiv.appendChild(div);
+    } catch (err) {
+        console.error('Error fetching ETH balance:', err);
+    }
+}
+
+// Send ERC20 token (existing code)
 if (sendPrivatePaymentBtn) {
     sendPrivatePaymentBtn.addEventListener('click', async () => {
         const amount = paymentAmountInput.value;
@@ -639,9 +693,16 @@ if (sendPrivatePaymentBtn) {
             paymentStatusDiv.innerHTML = `⏳ Transaction sent: <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">${tx.hash}</a>`;
             await tx.wait();
             paymentStatusDiv.innerHTML = `✅ Payment confirmed! <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">View</a>`;
+            // Refresh balances after payment
+            setTimeout(refreshBalances, 5000);
         } catch (err) {
             console.error('Payment error:', err);
             paymentStatusDiv.textContent = `❌ Error: ${err.message}`;
         }
     });
+}
+
+// Refresh balances button listener
+if (refreshBalancesBtn) {
+    refreshBalancesBtn.addEventListener('click', refreshBalances);
 }
