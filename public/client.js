@@ -624,8 +624,8 @@ if (hyperswitchPayBtn) {
             if (!data.clientSecret) throw new Error('No client secret received');
             console.log('Client secret received:', data.clientSecret);
             hyperswitchStatus.textContent = '';
-            
-            // Initialize Hyperswitch with the client secret
+
+            // Initialize Hyperswitch with the client secret    
             hyperswitchInstance = Hyper({
                 clientSecret: data.clientSecret,
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
