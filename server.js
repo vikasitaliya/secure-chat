@@ -11,14 +11,14 @@ app.use(express.static('public'));
 app.use(express.json());
 
 // ---------- Hyperswitch Configuration ----------
-const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTVlnDlvpxk7uE1YNvl';        // Replace with your sandbox secret key
-const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';   // Replace with your sandbox publishable key
+const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTVlnDlvpxk7uE1YNvl';   // Your sandbox secret key
+const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4'; // Your sandbox publishable key
 const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';      // Sandbox environment
 
 function getHyperswitchHeaders() {
     return {
         'Content-Type': 'application/json',
-        'api-key': HYPERSWITCH_API_KEY,
+        'api-key': HYPERSWITCH_API_KEY,   // using secret key here
     };
 }
 
@@ -46,7 +46,7 @@ app.post('/api/create-payment', async (req, res) => {
         });
     } catch (err) {
         console.error('Payment creation error:', err.response?.data || err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: err.response?.data || err.message });
     }
 });
 
