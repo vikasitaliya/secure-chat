@@ -620,33 +620,43 @@ if (hyperswitchPayBtn) {
 
             const data = await response.json();
             if (!data.clientSecret) throw new Error('No client secret received');
-            console.log('✅ Client secret received:', data.clientSecret);
+            console.log('🔵 CLIENT SECRET:', data.clientSecret);
             hyperswitchStatus.textContent = '';
 
-            // Initialize Hyperswitch
-            console.log('Initializing Hyper...');
+            // 1. Initialize Hyper
+            console.log('🟢 1. Initializing Hyper...');
             hyperswitchInstance = Hyper({
                 clientSecret: data.clientSecret,
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
             });
-            console.log('Hyper instance created');
+            console.log('✅ Hyper instance created');
 
-            console.log('Creating elements...');
+            // 2. Create elements
+            console.log('🟢 2. Creating elements...');
             hyperswitchElements = hyperswitchInstance.elements();
-            console.log('Elements created');
+            console.log('✅ Elements created');
 
-            console.log('Creating payment element...');
-            const paymentElement = hyperswitchElements.create('payment', {
-                layout: 'tabs',
-                wallets: { walletReturnUrl: window.location.origin + '/payment-success.html', style: { theme: 'dark' } },
-            });
-            console.log('Payment element created');
+            // 3. Create payment element
+            console.log('🟢 3. Creating payment element...');
+            let paymentElement;
+            try {
+                paymentElement = hyperswitchElements.create('payment', {
+                    layout: 'tabs',
+                    wallets: { walletReturnUrl: window.location.origin + '/payment-success.html', style: { theme: 'dark' } },
+                });
+                console.log('✅ Payment element created');
+            } catch (e) {
+                console.error('❌ Payment element creation failed, trying card element:', e);
+                paymentElement = hyperswitchElements.create('card');
+                console.log('✅ Card element created as fallback');
+            }
 
-            console.log('Attempting to mount...');
+            // 4. Mount
+            console.log('🟢 4. Mounting element...');
             paymentElement.mount('#hyperswitch-payment-element');
-            console.log('✅ Mount succeeded – payment form should be visible.');
+            console.log('✅ Mount succeeded – check the DOM');
 
-            // Create confirm button
+            // 5. Create confirm button
             const confirmBtn = document.createElement('button');
             confirmBtn.id = 'hyperswitch-confirm-button';
             confirmBtn.textContent = 'Confirm Payment';
