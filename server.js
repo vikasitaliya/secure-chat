@@ -11,7 +11,7 @@ app.use(express.static('public'));
 app.use(express.json());
 
 // ---------- Hyperswitch Configuration ----------
-const HYPERSWITCH_API_KEY = 'YOUR_HYPERSWITCH_API_KEY';        // Replace with your sandbox key
+const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTVlnDlvpxk7uE1YNvl';        // Replace with your sandbox key
 const HYPERSWITCH_PUBLISHABLE_KEY = 'YOUR_PUBLISHABLE_KEY';   // Replace with your publishable key
 const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';
 
