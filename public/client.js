@@ -1,4 +1,4 @@
-// public/client.js – FINAL VERSION with fixed Hyperswitch integration
+// public/client.js – FINAL VERSION with Hyperswitch error handling
 const socket = io('http://localhost:3000');
 
 // ---------- Core Chat ----------
@@ -239,7 +239,6 @@ function setupDataChannel(channel, targetId) {
                 updateRecipientField();
             } else { console.log('Unknown JSON type', obj.type); }
         } catch (e) {
-            // Text message
             try {
                 const bytes = CryptoJS.AES.decrypt(event.data, encryptionKey);
                 const plaintext = bytes.toString(CryptoJS.enc.Utf8);
@@ -312,9 +311,164 @@ function sendFileViaChannel(channel, file, encryptionKey) {
 }
 
 // ------------------------------------------------------------
-// 4. BLE Functions (unchanged – omitted for brevity, keep your existing)
+// 4. BLE Functions (full implementation)
 // ------------------------------------------------------------
-// ... (your existing BLE functions from earlier)
+async function getBLEPlugin() {
+    if (typeof Capacitor === 'undefined' || !Capacitor.isNative) return null;
+    try {
+        const module = await import('@capgo/capacitor-bluetooth-low-energy');
+        return module.BluetoothLowEnergy;
+    } catch (err) {
+        console.error('Failed to load BLE plugin:', err);
+        return null;
+    }
+}
+
+async function initBLE() {
+    const ble = await getBLEPlugin();
+    if (!ble) return false;
+    try {
+        await ble.initialize();
+        return true;
+    } catch (err) {
+        console.error('BLE init error:', err);
+        return false;
+    }
+}
+
+async function startBLEAdvert() {
+    const ble = await getBLEPlugin();
+    if (!ble || !myUsername || bleAdvertising) return;
+    try {
+        await ble.startAdvertising({
+            deviceName: `Chat_${myUsername}`,
+            services: [BLE_SERVICE_UUID],
+            characteristics: [{
+                uuid: BLE_CHARACTERISTIC_UUID,
+                properties: ['Read', 'Write', 'Notify'],
+                permissions: ['Readable', 'Writable'],
+                value: ''
+            }]
+        });
+        bleAdvertising = true;
+    } catch (err) {
+        console.error('Start advertising failed:', err);
+    }
+}
+
+async function stopBLEAdvert() {
+    const ble = await getBLEPlugin();
+    if (!ble || !bleAdvertising) return;
+    try {
+        await ble.stopAdvertising();
+        bleAdvertising = false;
+    } catch (err) {
+        console.error('Stop advertising failed:', err);
+    }
+}
+
+async function startBLEScan() {
+    const ble = await getBLEPlugin();
+    if (!ble || bleScanning) return;
+    try {
+        await ble.startScan({ services: [BLE_SERVICE_UUID] });
+        bleScanning = true;
+        ble.addListener('deviceScanned', (device) => addDeviceToList(device));
+    } catch (err) {
+        console.error('Start scan failed:', err);
+    }
+}
+
+async function stopBLEScan() {
+    const ble = await getBLEPlugin();
+    if (!ble || !bleScanning) return;
+    try {
+        await ble.stopScan();
+        bleScanning = false;
+    } catch (err) {
+        console.error('Stop scan failed:', err);
+    }
+}
+
+function addDeviceToList(device) {
+    if (!nearbyDevicesDiv) return;
+    if (document.getElementById(`device-${device.deviceId}`)) return;
+    const btn = document.createElement('button');
+    btn.id = `device-${device.deviceId}`;
+    btn.textContent = device.name || device.deviceId;
+    btn.onclick = () => connectToBLEDevice(device.deviceId);
+    nearbyDevicesDiv.appendChild(btn);
+}
+
+async function connectToBLEDevice(deviceId) {
+    const ble = await getBLEPlugin();
+    if (!ble || bleConnectedDeviceId) return;
+    try {
+        await ble.connect({ deviceId });
+        bleConnectedDeviceId = deviceId;
+        await ble.discoverServices({ deviceId });
+        ble.addListener('characteristicChanged', ({ characteristic, value }) => {
+            if (characteristic === BLE_CHARACTERISTIC_UUID) {
+                const encrypted = new TextDecoder().decode(value);
+                const key = getKeyForPeer(deviceId);
+                if (key) {
+                    const bytes = CryptoJS.AES.decrypt(encrypted, key);
+                    const plaintext = bytes.toString(CryptoJS.enc.Utf8);
+                    displayBLEChatMessage(deviceId, plaintext, 'them');
+                }
+            }
+        });
+    } catch (err) {
+        console.error('BLE connect error:', err);
+    }
+}
+
+async function disconnectBLEDevice() {
+    const ble = await getBLEPlugin();
+    if (!ble || !bleConnectedDeviceId) return;
+    try {
+        await ble.disconnect({ deviceId: bleConnectedDeviceId });
+        bleConnectedDeviceId = null;
+    } catch (err) {
+        console.error('Disconnect error:', err);
+    }
+}
+
+function storeKeyForPeer(peerId, key) { peerKeys[peerId] = key; }
+function getKeyForPeer(peerId) { return peerKeys[peerId]; }
+
+function displayBLEChatMessage(peerId, text, sender) {
+    const shortId = peerId.substring(0, 6);
+    const msgDiv = document.createElement('div');
+    msgDiv.textContent = `[BLE ${shortId}] ${sender}: ${text}`;
+    messagesDiv.appendChild(msgDiv);
+}
+
+if (enableBLEBtn) {
+    enableBLEBtn.addEventListener('click', async () => {
+        if (!myUsername) { alert('Please join the chat first.'); return; }
+        const ble = await getBLEPlugin();
+        if (!ble) { alert('BLE only works on real devices (not in browser)'); return; }
+        const perm = await ble.requestPermissions();
+        if (!perm) { alert('Bluetooth permissions required'); return; }
+        await startBLEAdvert();
+        await startBLEScan();
+        enableBLEBtn.disabled = true;
+        if (disableBLEBtn) disableBLEBtn.disabled = false;
+        bleEnabled = true;
+    });
+}
+
+if (disableBLEBtn) {
+    disableBLEBtn.addEventListener('click', async () => {
+        await stopBLEAdvert();
+        await stopBLEScan();
+        await disconnectBLEDevice();
+        enableBLEBtn.disabled = false;
+        disableBLEBtn.disabled = true;
+        bleEnabled = false;
+    });
+}
 
 // ------------------------------------------------------------
 // 5. Payment Functions (USDC + Balances)
@@ -410,10 +564,16 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (FIXED)
+// 6. Hyperswitch Global Payment Integration (with SDK check)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
+        // Check if Hyperswitch SDK is loaded
+        if (typeof Hyper === 'undefined') {
+            hyperswitchStatus.textContent = '❌ Hyperswitch SDK not loaded. Check your network or try a different CDN.';
+            return;
+        }
+
         const amount = parseFloat(prompt('Enter amount in USD (e.g., 10):'));
         if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
         if (!userWallet) { alert('Wallet not initialized'); return; }
@@ -458,7 +618,7 @@ if (hyperswitchPayBtn) {
             confirmBtn.style.marginTop = '10px';
             hyperswitchElementDiv.after(confirmBtn);
 
-            // Attach confirm handler (use a one-time listener to avoid duplicates)
+            // Attach confirm handler (one-time listener)
             confirmBtn.addEventListener('click', async function confirmHandler() {
                 confirmBtn.disabled = true;
                 hyperswitchStatus.textContent = 'Processing...';
@@ -480,7 +640,7 @@ if (hyperswitchPayBtn) {
                     hyperswitchStatus.textContent = '❌ Error: ' + err.message;
                     confirmBtn.disabled = false;
                 }
-            }, { once: true }); // ensures only one listener
+            }, { once: true });
 
         } catch (err) {
             console.error('Hyperswitch init error:', err);
