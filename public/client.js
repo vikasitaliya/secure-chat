@@ -629,7 +629,7 @@ if (hyperswitchPayBtn) {
                fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
            });
            console.log('✅ Hyper instance created');
-           
+
             // 2. Create elements
             console.log('🟢 2. Creating elements...');
             hyperswitchElements = hyperswitchInstance.elements();
@@ -641,9 +641,9 @@ if (hyperswitchPayBtn) {
             try {
                 paymentElement = hyperswitchElements.create('payment', {
                     layout: 'tabs',
-                    wallets: { walletReturnUrl: window.location.origin + '/payment-success.html', style: { theme: 'dark' } },
+                    paymentMethodTypes: ['card']   // Only show card payments – no wallets
                 });
-                console.log('✅ Payment element created');
+                console.log('✅ Payment element created (cards only)');
             } catch (e) {
                 console.error('❌ Payment element creation failed, trying card element:', e);
                 paymentElement = hyperswitchElements.create('card');
