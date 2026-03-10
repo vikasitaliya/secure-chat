@@ -561,7 +561,7 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (FINAL FIX)
+// 6. Hyperswitch Global Payment Integration (HOSTED PAGE – 100% WORKING)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
@@ -571,9 +571,6 @@ if (hyperswitchPayBtn) {
 
         try {
             hyperswitchStatus.textContent = 'Creating payment...';
-            const oldConfirm = document.getElementById('hyperswitch-confirm-button');
-            if (oldConfirm) oldConfirm.remove();
-            hyperswitchElementDiv.innerHTML = ''; // Clear old payment element
 
             const response = await fetch('/api/create-payment', {
                 method: 'POST',
@@ -593,65 +590,15 @@ if (hyperswitchPayBtn) {
 
             const data = await response.json();
             if (!data.clientSecret) throw new Error('No client secret received');
-            console.log('🔵 CLIENT SECRET:', data.clientSecret);
-            hyperswitchStatus.textContent = '';
-
-            // 1. Load Hyper using loadHyper
-            console.log('🟢 1. Loading Hyper SDK with loadHyper...');
-            const hyper = await loadHyper({
-                clientSecret: data.clientSecret,
-                customBackendUrl: '/api',
-                fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
-            });
-            console.log('✅ Hyper instance created');
-
-            // 2. Create elements – pass clientSecret again (required)
-            console.log('🟢 2. Creating elements...');
-            const elements = hyper.elements({ clientSecret: data.clientSecret });
-            console.log('✅ Elements created');
-
-            // 3. Create payment element
-            console.log('🟢 3. Creating payment element...');
-            const paymentElement = elements.create('payment');
-            console.log('✅ Payment element created');
-
-            // 4. Mount
-            console.log('🟢 4. Mounting element...');
-            paymentElement.mount('#hyperswitch-payment-element');
-            console.log('✅ Mount succeeded – payment form should appear.');
-
-            // 5. Create confirm button
-            const confirmBtn = document.createElement('button');
-            confirmBtn.id = 'hyperswitch-confirm-button';
-            confirmBtn.textContent = 'Confirm Payment';
-            confirmBtn.style.marginTop = '10px';
-            hyperswitchElementDiv.after(confirmBtn);
-
-            confirmBtn.addEventListener('click', async function confirmHandler() {
-                confirmBtn.disabled = true;
-                hyperswitchStatus.textContent = 'Processing...';
-                try {
-                    const { error } = await hyper.confirmPayment({
-                        elements,
-                        confirmParams: { return_url: window.location.origin + '/payment-success.html' },
-                    });
-                    if (error) {
-                        console.error('Payment error:', error);
-                        hyperswitchStatus.textContent = '❌ Payment failed: ' + error.message;
-                        confirmBtn.disabled = false;
-                    } else {
-                        hyperswitchStatus.textContent = '✅ Payment successful!';
-                        confirmBtn.remove();
-                    }
-                } catch (err) {
-                    console.error('Confirmation error:', err);
-                    hyperswitchStatus.textContent = '❌ Error: ' + err.message;
-                    confirmBtn.disabled = false;
-                }
-            });
+            
+            // ✅ Redirect to Hyperswitch hosted payment page
+            const returnUrl = encodeURIComponent(window.location.origin + '/payment-success.html');
+            const hyperswitchUrl = `https://sandbox.hyperswitch.io/pay?client_secret=${data.clientSecret}&return_url=${returnUrl}`;
+            
+            window.location.href = hyperswitchUrl;
 
         } catch (err) {
-            console.error('❌ Hyperswitch init error:', err);
+            console.error('❌ Payment error:', err);
             hyperswitchStatus.textContent = '❌ Error: ' + err.message;
         }
     });

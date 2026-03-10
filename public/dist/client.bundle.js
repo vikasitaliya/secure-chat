@@ -1671,7 +1671,7 @@ var require_client = __commonJS({
           });
           console.log("\u2705 Hyper instance created");
           console.log("\u{1F7E2} 2. Creating elements...");
-          const elements = hyper.elements();
+          const elements = hyper.elements({ clientSecret: data.clientSecret });
           console.log("\u2705 Elements created");
           console.log("\u{1F7E2} 3. Creating payment element...");
           const paymentElement = elements.create("payment");
