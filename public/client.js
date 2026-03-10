@@ -1,6 +1,6 @@
 // public/client.js – FINAL VERSION using npm package
-import Hyper from '@juspay-tech/hyper-js';
 const socket = io('http://localhost:3000');
+import Hyper from '@juspay-tech/hyper-js';
 
 // ---------- Core Chat ----------
 let myUsername = null;
