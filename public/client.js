@@ -328,7 +328,7 @@ function sendFileViaChannel(channel, file, encryptionKey) {
 }
 
 // ------------------------------------------------------------
-// 4. BLE Functions (unchanged)
+// 4. BLE Functions
 // ------------------------------------------------------------
 async function getBLEPlugin() {
     if (typeof Capacitor === 'undefined' || !Capacitor.isNative) return null;
@@ -581,7 +581,7 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (FINAL)
+// 6. Hyperswitch Global Payment Integration (FINAL FIX)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
@@ -664,7 +664,7 @@ if (hyperswitchPayBtn) {
                     if (container.children.length > 0) {
                         console.log('✅ Payment form should be visible now.');
                     } else {
-                        console.warn('⚠️ Element mounted but container empty – check console for errors.');
+                        console.warn('⚠️ Element mounted but container empty – check that a payment connector is enabled in Hyperswitch dashboard.');
                     }
                 }, 500);
             } else {
