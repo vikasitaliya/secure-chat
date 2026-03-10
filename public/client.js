@@ -1,4 +1,3 @@
-// public/client.js – FINAL VERSION using loadHyper
 import { loadHyper } from '@juspay-tech/hyper-js';
 
 const socket = io('http://localhost:3000');
@@ -562,7 +561,7 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (USING loadHyper)
+// 6. Hyperswitch Global Payment Integration (FINAL FIX)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
@@ -597,7 +596,7 @@ if (hyperswitchPayBtn) {
             console.log('🔵 CLIENT SECRET:', data.clientSecret);
             hyperswitchStatus.textContent = '';
 
-            // ✅ Load Hyper using loadHyper (correct export)
+            // 1. Load Hyper using loadHyper
             console.log('🟢 1. Loading Hyper SDK with loadHyper...');
             const hyper = await loadHyper({
                 clientSecret: data.clientSecret,
@@ -606,9 +605,9 @@ if (hyperswitchPayBtn) {
             });
             console.log('✅ Hyper instance created');
 
-            // 2. Create elements
+            // 2. Create elements – pass clientSecret again (required)
             console.log('🟢 2. Creating elements...');
-            const elements = hyper.elements();
+            const elements = hyper.elements({ clientSecret: data.clientSecret });
             console.log('✅ Elements created');
 
             // 3. Create payment element
