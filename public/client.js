@@ -1,4 +1,4 @@
-// public/client.js – FINAL VERSION with all fixes and debug logs
+// public/client.js – FINAL WORKING VERSION
 const socket = io('http://localhost:3000');
 
 // ---------- Core Chat ----------
@@ -328,7 +328,7 @@ function sendFileViaChannel(channel, file, encryptionKey) {
 }
 
 // ------------------------------------------------------------
-// 4. BLE Functions (full implementation)
+// 4. BLE Functions (unchanged)
 // ------------------------------------------------------------
 async function getBLEPlugin() {
     if (typeof Capacitor === 'undefined' || !Capacitor.isNative) return null;
@@ -581,7 +581,7 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (FINAL FIX)
+// 6. Hyperswitch Global Payment Integration (FINAL)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
@@ -624,53 +624,49 @@ if (hyperswitchPayBtn) {
             hyperswitchStatus.textContent = '';
 
             // 1. Initialize Hyper with options object + proxy
-            console.log('🟢 1. Initializing Hyper with options object + proxy...');
+            console.log('🟢 1. Initializing Hyper...');
             hyperswitchInstance = Hyper({
                 clientSecret: data.clientSecret,
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
                 customBackendUrl: '/api'
             });
-            console.log('✅ Hyper instance created, type:', typeof hyperswitchInstance);
+            console.log('✅ Hyper instance created');
 
-            // 2. Create elements – pass clientSecret again
+            // 2. Create elements – pass clientSecret and customBackendUrl again
             console.log('🟢 2. Creating elements...');
-            hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
+            hyperswitchElements = hyperswitchInstance.elements({ 
+                clientSecret: data.clientSecret,
+                customBackendUrl: '/api'
+            });
             console.log('✅ Elements created');
 
-            // 3. Create payment element (no extra options)
+            // 3. Create payment element (simplest form)
             console.log('🟢 3. Creating payment element...');
             let paymentElement;
             try {
                 paymentElement = hyperswitchElements.create('payment');
                 console.log('✅ Payment element created');
-                console.log('Does paymentElement have mount?', typeof paymentElement.mount === 'function');
             } catch (e) {
-                console.error('❌ Payment element creation threw exception:', e);
-                // Try fallback to card
-                try {
-                    paymentElement = hyperswitchElements.create('card');
-                    console.log('✅ Card element created as fallback');
-                } catch (e2) {
-                    console.error('❌ Card element also failed:', e2);
-                }
+                console.error('❌ Payment element creation failed, trying card:', e);
+                paymentElement = hyperswitchElements.create('card');
+                console.log('✅ Card element created as fallback');
             }
 
-            // 4. Mount if we have an element
+            // 4. Mount
             if (paymentElement && typeof paymentElement.mount === 'function') {
                 console.log('🟢 4. Mounting element...');
-                try {
-                    paymentElement.mount('#hyperswitch-payment-element');
-                    console.log('✅ Mount succeeded');
+                paymentElement.mount('#hyperswitch-payment-element');
+                console.log('✅ Mount succeeded');
 
-                    // Check if anything was added to the DOM
-                    setTimeout(() => {
-                        const container = document.getElementById('hyperswitch-payment-element');
-                        console.log('Container children after mount:', container.children.length);
-                        console.log('Container innerHTML preview:', container.innerHTML.substring(0, 200));
-                    }, 500);
-                } catch (mountErr) {
-                    console.error('❌ Mount threw exception:', mountErr);
-                }
+                setTimeout(() => {
+                    const container = document.getElementById('hyperswitch-payment-element');
+                    console.log('Container children after mount:', container.children.length);
+                    if (container.children.length > 0) {
+                        console.log('✅ Payment form should be visible now.');
+                    } else {
+                        console.warn('⚠️ Element mounted but container empty – check console for errors.');
+                    }
+                }, 500);
             } else {
                 console.error('❌ No valid payment element to mount');
             }
