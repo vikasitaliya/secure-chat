@@ -524,7 +524,7 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (sandbox, all endpoints)
+// 6. Hyperswitch – Simple Card Element (works with test card)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
   hyperswitchPayBtn.addEventListener('click', async () => {
@@ -542,7 +542,7 @@ if (hyperswitchPayBtn) {
       const oldConfirm = document.getElementById('hyperswitch-confirm-button');
       if (oldConfirm) oldConfirm.remove();
 
-      // 1. Create payment intent on your server
+      // 1. Create payment intent
       const response = await fetch('/api/create-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -557,27 +557,22 @@ if (hyperswitchPayBtn) {
       if (!data.clientSecret) throw new Error('No client secret received');
       hyperswitchStatus.textContent = '';
 
-      // 2. Initialize Hyper with sandbox for backend AND UI
-      hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY, {
-        customBackendUrl: 'https://sandbox.hyperswitch.io',   // API calls
-        customUiUrl: 'https://sandbox.hyperswitch.io'         // UI iframe
-      });
+      // 2. Initialize Hyper (no custom URLs – use defaults)
+      hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY);
 
-      // 3. Create elements with the client secret
+      // 3. Create card element (simplest, works with any card-capable connector)
       hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
+      const cardElement = hyperswitchElements.create('card');
+      cardElement.mount('#hyperswitch-payment-element');
 
-      // 4. Mount the payment element (tabs layout)
-      const paymentElement = hyperswitchElements.create('payment', { layout: 'tabs' });
-      paymentElement.mount('#hyperswitch-payment-element');
-
-      // 5. Create confirm button
+      // 4. Create confirm button
       const confirmBtn = document.createElement('button');
       confirmBtn.id = 'hyperswitch-confirm-button';
-      confirmBtn.textContent = 'Confirm Payment';
+      confirmBtn.textContent = 'Pay with Card';
       confirmBtn.style.marginTop = '10px';
       hyperswitchElementDiv.after(confirmBtn);
 
-      // 6. Attach confirm handler (one‑time)
+      // 5. Confirm payment
       confirmBtn.addEventListener('click', async function confirmHandler() {
         confirmBtn.disabled = true;
         hyperswitchStatus.textContent = 'Processing...';
@@ -595,7 +590,7 @@ if (hyperswitchPayBtn) {
             if (status === 'succeeded') {
               hyperswitchStatus.textContent = '✅ Payment successful!';
             } else {
-              hyperswitchStatus.textContent = `ℹ️ Payment status: ${status}`;
+              hyperswitchStatus.textContent = `ℹ️ Status: ${status}`;
             }
             confirmBtn.remove();
           }
