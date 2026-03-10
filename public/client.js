@@ -1,4 +1,6 @@
-// public/client.js – FINAL WORKING VERSION
+// public/client.js – FINAL VERSION using npm package
+import { loadHyper } from '@juspay-tech/hyper-js';
+
 const socket = io('http://localhost:3000');
 
 // ---------- Core Chat ----------
@@ -49,27 +51,6 @@ const refreshBalancesBtn = document.getElementById('refresh-balances');
 const hyperswitchPayBtn = document.getElementById('hyperswitch-pay-button');
 const hyperswitchStatus = document.getElementById('hyperswitch-status');
 const hyperswitchElementDiv = document.getElementById('hyperswitch-payment-element');
-
-// ---------- Hyperswitch State ----------
-let hyperswitchInstance = null;
-let hyperswitchElements = null;
-
-// Helper to wait for Hyper global (in case script loads slowly)
-function waitForHyper(timeout = 5000) {
-    return new Promise((resolve, reject) => {
-        if (typeof Hyper !== 'undefined') return resolve();
-        const start = Date.now();
-        const interval = setInterval(() => {
-            if (typeof Hyper !== 'undefined') {
-                clearInterval(interval);
-                resolve();
-            } else if (Date.now() - start > timeout) {
-                clearInterval(interval);
-                reject(new Error('Hyper SDK not loaded in time'));
-            }
-        }, 100);
-    });
-}
 
 // ------------------------------------------------------------
 // 1. Key generation & wallet derivation
@@ -328,7 +309,7 @@ function sendFileViaChannel(channel, file, encryptionKey) {
 }
 
 // ------------------------------------------------------------
-// 4. BLE Functions
+// 4. BLE Functions (unchanged)
 // ------------------------------------------------------------
 async function getBLEPlugin() {
     if (typeof Capacitor === 'undefined' || !Capacitor.isNative) return null;
@@ -581,17 +562,10 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (FINAL FIX)
+// 6. Hyperswitch Global Payment Integration (USING NPM PACKAGE)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
-        try {
-            await waitForHyper(5000);
-        } catch (err) {
-            hyperswitchStatus.textContent = '❌ Hyperswitch SDK not loaded. Check that lib/hyperswitch.js exists.';
-            return;
-        }
-
         const amount = parseFloat(prompt('Enter amount in USD (e.g., 10):'));
         if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
         if (!userWallet) { alert('Wallet not initialized'); return; }
@@ -623,53 +597,29 @@ if (hyperswitchPayBtn) {
             console.log('🔵 CLIENT SECRET:', data.clientSecret);
             hyperswitchStatus.textContent = '';
 
-            // 1. Initialize Hyper with options object + proxy
-            console.log('🟢 1. Initializing Hyper...');
-            hyperswitchInstance = Hyper({
+            // 1. Load Hyper SDK dynamically (this handles the correct version)
+            console.log('🟢 1. Loading Hyper SDK...');
+            const hyperInstance = await loadHyper({
                 clientSecret: data.clientSecret,
+                customBackendUrl: '/api',  // THIS WILL NOW WORK
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
-                customBackendUrl: '/api'
             });
             console.log('✅ Hyper instance created');
 
-            // 2. Create elements – pass clientSecret and customBackendUrl again
+            // 2. Create elements
             console.log('🟢 2. Creating elements...');
-            hyperswitchElements = hyperswitchInstance.elements({ 
-                clientSecret: data.clientSecret,
-                customBackendUrl: '/api'
-            });
+            const elements = hyperInstance.elements();
             console.log('✅ Elements created');
 
-            // 3. Create payment element (simplest form)
+            // 3. Create payment element
             console.log('🟢 3. Creating payment element...');
-            let paymentElement;
-            try {
-                paymentElement = hyperswitchElements.create('payment');
-                console.log('✅ Payment element created');
-            } catch (e) {
-                console.error('❌ Payment element creation failed, trying card:', e);
-                paymentElement = hyperswitchElements.create('card');
-                console.log('✅ Card element created as fallback');
-            }
+            const paymentElement = elements.create('payment');
+            console.log('✅ Payment element created');
 
             // 4. Mount
-            if (paymentElement && typeof paymentElement.mount === 'function') {
-                console.log('🟢 4. Mounting element...');
-                paymentElement.mount('#hyperswitch-payment-element');
-                console.log('✅ Mount succeeded');
-
-                setTimeout(() => {
-                    const container = document.getElementById('hyperswitch-payment-element');
-                    console.log('Container children after mount:', container.children.length);
-                    if (container.children.length > 0) {
-                        console.log('✅ Payment form should be visible now.');
-                    } else {
-                        console.warn('⚠️ Element mounted but container empty – check that a payment connector is enabled in Hyperswitch dashboard.');
-                    }
-                }, 500);
-            } else {
-                console.error('❌ No valid payment element to mount');
-            }
+            console.log('🟢 4. Mounting element...');
+            paymentElement.mount('#hyperswitch-payment-element');
+            console.log('✅ Mount succeeded – payment form should appear.');
 
             // 5. Create confirm button
             const confirmBtn = document.createElement('button');
@@ -682,8 +632,8 @@ if (hyperswitchPayBtn) {
                 confirmBtn.disabled = true;
                 hyperswitchStatus.textContent = 'Processing...';
                 try {
-                    const { error } = await hyperswitchInstance.confirmPayment({
-                        elements: hyperswitchElements,
+                    const { error } = await hyperInstance.confirmPayment({
+                        elements,
                         confirmParams: { return_url: window.location.origin + '/payment-success.html' },
                     });
                     if (error) {
