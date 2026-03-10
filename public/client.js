@@ -1,5 +1,6 @@
-// public/client.js – FINAL VERSION using npm package
-import Hyper from '@juspay-tech/hyper-js';
+// public/client.js – FINAL VERSION using npm package (named import)
+import { Hyper } from '@juspay-tech/hyper-js';
+
 const socket = io('http://localhost:3000');
 
 // ---------- Core Chat ----------
