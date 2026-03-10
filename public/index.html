@@ -13,7 +13,6 @@
         #nearbyDevices button { margin: 5px; }
         #payment-status { margin-top: 10px; font-size: 0.9em; }
         #testnet-faucet { font-size: 0.9em; }
-        #hyperswitch-payment-element { margin: 10px 0; }
         #hyperswitch-pay-button, #hyperswitch-confirm-button { margin: 5px 0; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
         #hyperswitch-confirm-button { background: #28a745; }
         #hyperswitch-payment-element {
@@ -22,7 +21,7 @@
             padding: 10px;
             margin: 10px 0;
             background: #f9f9f9;
-            }
+        }
     </style>
 </head>
 <body>
@@ -61,13 +60,13 @@
                 <p>Wallet: <span id="wallet-address"></span></p>
                 <p>Network: <span id="network-name">Sepolia (Testnet)</span></p>
             </div>
-            
+
             <div id="balances">
                 <h4>Balances</h4>
                 <div id="balance-list"></div>
                 <button id="refresh-balances">Refresh</button>
             </div>
-            
+
             <!-- Existing USDC Payment -->
             <div id="payment-actions">
                 <h4>Send Private Payment (USDC)</h4>
@@ -81,7 +80,7 @@
                 <button id="send-private-payment">Send Private Payment</button>
                 <div id="payment-status"></div>
             </div>
-            
+
             <!-- Hyperswitch Global Payment -->
             <hr/>
             <h4>🌐 Global Payments (Hyperswitch)</h4>
@@ -91,7 +90,7 @@
 
             <div id="testnet-faucet">
                 <p><strong>Testnet Mode</strong> - Get free test tokens:</p>
-                <a href="https://sepolia-faucet.pk910.de/" target="_blank">Sepolia ETH Faucet</a> | 
+                <a href="https://sepolia-faucet.pk910.de/" target="_blank">Sepolia ETH Faucet</a> |
                 <a href="https://faucet.circle.com/" target="_blank">USDC Faucet</a>
             </div>
         </div>
