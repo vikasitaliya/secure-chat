@@ -524,11 +524,10 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (sandbox, CORS‑safe)
+// 6. Hyperswitch Global Payment Integration (sandbox, all endpoints)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
   hyperswitchPayBtn.addEventListener('click', async () => {
-    // Guard: SDK must be loaded
     if (typeof Hyper === 'undefined') {
       hyperswitchStatus.textContent = '❌ Hyperswitch SDK not loaded.';
       return;
@@ -558,16 +557,16 @@ if (hyperswitchPayBtn) {
       if (!data.clientSecret) throw new Error('No client secret received');
       hyperswitchStatus.textContent = '';
 
-      // 2. Initialize Hyper with sandbox for both backend and UI
+      // 2. Initialize Hyper with sandbox for backend AND UI
       hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY, {
         customBackendUrl: 'https://sandbox.hyperswitch.io',   // API calls
-        customUiBaseUrl:  'https://sandbox.hyperswitch.io'    // Payment iframe
+        customUiUrl: 'https://sandbox.hyperswitch.io'         // UI iframe
       });
 
       // 3. Create elements with the client secret
       hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
 
-      // 4. Mount the payment element (tabs layout shows all enabled methods)
+      // 4. Mount the payment element (tabs layout)
       const paymentElement = hyperswitchElements.create('payment', { layout: 'tabs' });
       paymentElement.mount('#hyperswitch-payment-element');
 
@@ -578,7 +577,7 @@ if (hyperswitchPayBtn) {
       confirmBtn.style.marginTop = '10px';
       hyperswitchElementDiv.after(confirmBtn);
 
-      // 6. Attach confirm handler (one‑time listener to avoid double clicks)
+      // 6. Attach confirm handler (one‑time)
       confirmBtn.addEventListener('click', async function confirmHandler() {
         confirmBtn.disabled = true;
         hyperswitchStatus.textContent = 'Processing...';
