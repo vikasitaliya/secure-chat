@@ -23,7 +23,7 @@
     "axios": "^1.13.6",
     "crypto-js": "^4.2.0",
     "esbuild": "^0.25.2",
-    "ethers": "^5.7.2",
+    "ethers": "^5.8.0",
     "express": "^5.2.1",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3"
