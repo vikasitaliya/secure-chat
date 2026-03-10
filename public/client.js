@@ -561,10 +561,8 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (USING DIRECT CONSTRUCTOR)
+// 6. Hyperswitch Global Payment Integration (USING NAMED IMPORT)
 // ------------------------------------------------------------
- // Make sure this import is at the very top of your file!
-
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
         const amount = parseFloat(prompt('Enter amount in USD (e.g., 10):'));
@@ -598,16 +596,16 @@ if (hyperswitchPayBtn) {
             console.log('🔵 CLIENT SECRET:', data.clientSecret);
             hyperswitchStatus.textContent = '';
 
-            // ✅ CORRECT INITIALIZATION
+            // ✅ CORRECT INITIALIZATION with named import
             console.log('🟢 1. Initializing Hyper with direct constructor...');
             const hyper = new Hyper({
                 clientSecret: data.clientSecret,
-                customBackendUrl: '/api',  // this will route all API calls through your proxy
+                customBackendUrl: '/api',
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
             });
             console.log('✅ Hyper instance created');
 
-            // 2. Create elements (client secret is already in the instance)
+            // 2. Create elements
             console.log('🟢 2. Creating elements...');
             const elements = hyper.elements();
             console.log('✅ Elements created');
