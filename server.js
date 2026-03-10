@@ -15,7 +15,7 @@ const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeT
 const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
 const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';
 
-// ---------- Create a payment intent (specific endpoint) ----------
+// ---------- Create a payment intent ----------
 app.post('/api/create-payment', async (req, res) => {
     try {
         console.log('Payment request body:', req.body);
@@ -48,13 +48,11 @@ app.post('/api/create-payment', async (req, res) => {
     }
 });
 
-// ---------- Proxy for all other /api/* requests (no wildcard issues) ----------
+// ---------- Proxy for all other /api/* requests ----------
 app.use('/api', async (req, res) => {
     try {
-        // req.originalUrl includes the full path (e.g., /api/account/payment_methods?client_secret=...)
         const targetPath = req.originalUrl.replace('/api', '');
         const targetUrl = `${HYPERSWITCH_URL}${targetPath}`;
-
         console.log(`Proxying ${req.method} ${targetUrl}`);
 
         const response = await axios({
@@ -67,7 +65,6 @@ app.use('/api', async (req, res) => {
             data: req.body,
             params: req.query,
         });
-
         res.json(response.data);
     } catch (err) {
         console.error('Proxy error:', err.response?.data || err.message);
@@ -75,7 +72,7 @@ app.use('/api', async (req, res) => {
     }
 });
 
-// ---------- Ethereum RPC Proxy (Sepolia) ----------
+// ---------- Ethereum RPC Proxy ----------
 app.post('/rpc', async (req, res) => {
     try {
         const endpoints = [
