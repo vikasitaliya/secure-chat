@@ -524,7 +524,7 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch – Simple Card Element (works with test card)
+// 6. Hyperswitch – Full Payment Element (shows all enabled methods)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
   hyperswitchPayBtn.addEventListener('click', async () => {
@@ -557,22 +557,26 @@ if (hyperswitchPayBtn) {
       if (!data.clientSecret) throw new Error('No client secret received');
       hyperswitchStatus.textContent = '';
 
-      // 2. Initialize Hyper (no custom URLs – use defaults)
+      // 2. Initialize Hyper (use default backend – sandbox automatically)
       hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY);
 
-      // 3. Create card element (simplest, works with any card-capable connector)
+      // 3. Create elements with the client secret
       hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
-      const cardElement = hyperswitchElements.create('card');
-      cardElement.mount('#hyperswitch-payment-element');
 
-      // 4. Create confirm button
+      // 4. Create the FULL payment element – this shows all methods enabled in dashboard
+      const paymentElement = hyperswitchElements.create('payment', {
+        layout: 'tabs'   // 'tabs' or 'accordion' – whichever you like
+      });
+      paymentElement.mount('#hyperswitch-payment-element');
+
+      // 5. Create confirm button
       const confirmBtn = document.createElement('button');
       confirmBtn.id = 'hyperswitch-confirm-button';
-      confirmBtn.textContent = 'Pay with Card';
+      confirmBtn.textContent = 'Confirm Payment';
       confirmBtn.style.marginTop = '10px';
       hyperswitchElementDiv.after(confirmBtn);
 
-      // 5. Confirm payment
+      // 6. Confirm payment
       confirmBtn.addEventListener('click', async function confirmHandler() {
         confirmBtn.disabled = true;
         hyperswitchStatus.textContent = 'Processing...';
@@ -590,7 +594,7 @@ if (hyperswitchPayBtn) {
             if (status === 'succeeded') {
               hyperswitchStatus.textContent = '✅ Payment successful!';
             } else {
-              hyperswitchStatus.textContent = `ℹ️ Status: ${status}`;
+              hyperswitchStatus.textContent = `ℹ️ Payment status: ${status}`;
             }
             confirmBtn.remove();
           }
