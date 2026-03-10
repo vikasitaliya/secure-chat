@@ -1,6 +1,5 @@
 // public/client.js – FINAL VERSION using npm package
-import { loadHyper } from '@juspay-tech/hyper-js';
-
+import Hyper from '@juspay-tech/hyper-js';
 const socket = io('http://localhost:3000');
 
 // ---------- Core Chat ----------
@@ -562,8 +561,10 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (USING NPM PACKAGE)
+// 6. Hyperswitch Global Payment Integration (USING DIRECT CONSTRUCTOR)
 // ------------------------------------------------------------
+ // Make sure this import is at the very top of your file!
+
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
         const amount = parseFloat(prompt('Enter amount in USD (e.g., 10):'));
@@ -597,18 +598,18 @@ if (hyperswitchPayBtn) {
             console.log('🔵 CLIENT SECRET:', data.clientSecret);
             hyperswitchStatus.textContent = '';
 
-            // 1. Load Hyper SDK dynamically (this handles the correct version)
-            console.log('🟢 1. Loading Hyper SDK...');
-            const hyperInstance = await loadHyper({
+            // ✅ CORRECT INITIALIZATION
+            console.log('🟢 1. Initializing Hyper with direct constructor...');
+            const hyper = new Hyper({
                 clientSecret: data.clientSecret,
-                customBackendUrl: '/api',  // THIS WILL NOW WORK
+                customBackendUrl: '/api',  // this will route all API calls through your proxy
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
             });
             console.log('✅ Hyper instance created');
 
-            // 2. Create elements
+            // 2. Create elements (client secret is already in the instance)
             console.log('🟢 2. Creating elements...');
-            const elements = hyperInstance.elements();
+            const elements = hyper.elements();
             console.log('✅ Elements created');
 
             // 3. Create payment element
@@ -632,7 +633,7 @@ if (hyperswitchPayBtn) {
                 confirmBtn.disabled = true;
                 hyperswitchStatus.textContent = 'Processing...';
                 try {
-                    const { error } = await hyperInstance.confirmPayment({
+                    const { error } = await hyper.confirmPayment({
                         elements,
                         confirmParams: { return_url: window.location.origin + '/payment-success.html' },
                     });
