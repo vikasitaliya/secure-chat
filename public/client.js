@@ -581,7 +581,7 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (with debug logs)
+// 6. Hyperswitch Global Payment Integration (FINAL FIX)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
@@ -623,38 +623,33 @@ if (hyperswitchPayBtn) {
             console.log('🔵 CLIENT SECRET:', data.clientSecret);
             hyperswitchStatus.textContent = '';
 
-            // 1. Initialize Hyper with client secret (first argument)
-            console.log('🟢 1. Initializing Hyper with options object...');
+            // 1. Initialize Hyper with options object + proxy
+            console.log('🟢 1. Initializing Hyper with options object + proxy...');
             hyperswitchInstance = Hyper({
                 clientSecret: data.clientSecret,
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
+                customBackendUrl: '/api'  // <-- KEY FIX: route all API calls through our server
             });
             console.log('✅ Hyper instance created, type:', typeof hyperswitchInstance);
-            console.log('Hyper methods:', Object.keys(hyperswitchInstance));
 
             // 2. Create elements
             console.log('🟢 2. Creating elements...');
-            hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
-            console.log('✅ Elements created, type:', typeof hyperswitchElements);
-            console.log('Elements methods:', Object.keys(hyperswitchElements));
+            hyperswitchElements = hyperswitchInstance.elements();
+            console.log('✅ Elements created');
 
-            // 3. Create payment element (cards only, no wallets)
+            // 3. Create payment element (no extra options – use defaults)
             console.log('🟢 3. Creating payment element...');
             let paymentElement;
             try {
-                paymentElement = hyperswitchElements.create('payment', {
-                    layout: 'tabs',
-                    paymentMethodTypes: ['card']
-                });
-                console.log('✅ Payment element created, type:', typeof paymentElement);
-                console.log('Payment element methods:', Object.keys(paymentElement));
+                paymentElement = hyperswitchElements.create('payment'); // <-- SIMPLIFIED
+                console.log('✅ Payment element created');
                 console.log('Does paymentElement have mount?', typeof paymentElement.mount === 'function');
             } catch (e) {
                 console.error('❌ Payment element creation threw exception:', e);
                 // Try fallback to card
                 try {
                     paymentElement = hyperswitchElements.create('card');
-                    console.log('✅ Card element created as fallback, type:', typeof paymentElement);
+                    console.log('✅ Card element created as fallback');
                 } catch (e2) {
                     console.error('❌ Card element also failed:', e2);
                 }
