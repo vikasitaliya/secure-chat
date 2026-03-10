@@ -558,7 +558,9 @@ if (hyperswitchPayBtn) {
       hyperswitchStatus.textContent = '';
 
       // 2. Initialize Hyper with publishable key
-      hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY);
+      hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY, {
+        customBackendUrl: 'https://sandbox.hyperswitch.io'   // 👈 force sandbox
+      }); 
 
       // 3. Create elements with the client secret
       hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
