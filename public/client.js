@@ -524,11 +524,11 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (fixed)
+// 6. Hyperswitch Global Payment Integration (simplified)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
   hyperswitchPayBtn.addEventListener('click', async () => {
-    // Check if Hyper is available (loaded from local file)
+    // Check if Hyper is loaded
     if (typeof Hyper === 'undefined') {
       hyperswitchStatus.textContent = '❌ Hyperswitch SDK not loaded. Check that lib/hyperswitch.js exists.';
       return;
@@ -559,15 +559,13 @@ if (hyperswitchPayBtn) {
       hyperswitchStatus.textContent = '';
 
       // 2. Initialize Hyper with publishable key
-      hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY, {
-        fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
-      });
+      hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY);
 
-      // 3. Create elements with the client secret
+      // 3. Create elements with the client secret – use minimal options
       hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
       const paymentElement = hyperswitchElements.create('payment', {
-        layout: 'tabs',
-        wallets: { walletReturnUrl: window.location.origin + '/payment-success.html', style: { theme: 'dark' } },
+        layout: 'tabs'
+        // Remove wallets option to avoid warnings
       });
       paymentElement.mount('#hyperswitch-payment-element');
 
@@ -578,7 +576,7 @@ if (hyperswitchPayBtn) {
       confirmBtn.style.marginTop = '10px';
       hyperswitchElementDiv.after(confirmBtn);
 
-      // 5. Attach confirm handler (one-time listener)
+      // 5. Attach confirm handler
       confirmBtn.addEventListener('click', async function confirmHandler() {
         confirmBtn.disabled = true;
         hyperswitchStatus.textContent = 'Processing...';
