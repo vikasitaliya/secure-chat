@@ -624,8 +624,9 @@ if (hyperswitchPayBtn) {
             hyperswitchStatus.textContent = '';
 
             // 1. Initialize Hyper with client secret (first argument)
-            console.log('🟢 1. Initializing Hyper...');
-            hyperswitchInstance = Hyper(data.clientSecret, {
+            console.log('🟢 1. Initializing Hyper with options object...');
+            hyperswitchInstance = Hyper({
+                clientSecret: data.clientSecret,
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
             });
             console.log('✅ Hyper instance created, type:', typeof hyperswitchInstance);
@@ -633,7 +634,7 @@ if (hyperswitchPayBtn) {
 
             // 2. Create elements
             console.log('🟢 2. Creating elements...');
-            hyperswitchElements = hyperswitchInstance.elements();
+            hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
             console.log('✅ Elements created, type:', typeof hyperswitchElements);
             console.log('Elements methods:', Object.keys(hyperswitchElements));
 
