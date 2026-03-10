@@ -1663,16 +1663,15 @@ var require_client = __commonJS({
           if (!data.clientSecret) throw new Error("No client secret received");
           console.log("\u{1F535} CLIENT SECRET:", data.clientSecret);
           hyperswitchStatus.textContent = "";
-          console.log("\u{1F7E2} 1. Loading Hyper SDK...");
-          const hyperInstance = await Y({
+          console.log("\u{1F7E2} 1. Loading Hyper SDK with loadHyper...");
+          const hyper = await Y({
             clientSecret: data.clientSecret,
             customBackendUrl: "/api",
-            // THIS WILL NOW WORK
             fonts: [{ cssSrc: "https://fonts.googleapis.com/css?family=Roboto" }]
           });
           console.log("\u2705 Hyper instance created");
           console.log("\u{1F7E2} 2. Creating elements...");
-          const elements = hyperInstance.elements();
+          const elements = hyper.elements();
           console.log("\u2705 Elements created");
           console.log("\u{1F7E2} 3. Creating payment element...");
           const paymentElement = elements.create("payment");
@@ -1689,7 +1688,7 @@ var require_client = __commonJS({
             confirmBtn.disabled = true;
             hyperswitchStatus.textContent = "Processing...";
             try {
-              const { error } = await hyperInstance.confirmPayment({
+              const { error } = await hyper.confirmPayment({
                 elements,
                 confirmParams: { return_url: window.location.origin + "/payment-success.html" }
               });
