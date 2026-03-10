@@ -1,5 +1,5 @@
-// public/client.js – FINAL VERSION using npm package (named import)
-import { Hyper } from '@juspay-tech/hyper-js';
+// public/client.js – FINAL VERSION using loadHyper
+import { loadHyper } from '@juspay-tech/hyper-js';
 
 const socket = io('http://localhost:3000');
 
@@ -562,7 +562,7 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (USING NAMED IMPORT)
+// 6. Hyperswitch Global Payment Integration (USING loadHyper)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
     hyperswitchPayBtn.addEventListener('click', async () => {
@@ -597,9 +597,9 @@ if (hyperswitchPayBtn) {
             console.log('🔵 CLIENT SECRET:', data.clientSecret);
             hyperswitchStatus.textContent = '';
 
-            // ✅ CORRECT INITIALIZATION with named import
-            console.log('🟢 1. Initializing Hyper with direct constructor...');
-            const hyper = new Hyper({
+            // ✅ Load Hyper using loadHyper (correct export)
+            console.log('🟢 1. Loading Hyper SDK with loadHyper...');
+            const hyper = await loadHyper({
                 clientSecret: data.clientSecret,
                 customBackendUrl: '/api',
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
