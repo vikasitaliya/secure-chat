@@ -12,109 +12,80 @@ app.use(express.json());
 
 // ---------- Hyperswitch Configuration ----------
 const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTVlnDlvpxk7uE1YNvl';
-const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
 const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';
 
-// ---------- Create a payment intent ----------
+// Create a payment intent
 app.post('/api/create-payment', async (req, res) => {
-    try {
-        console.log('Payment request body:', req.body);
-        const { amount, currency, customerId, email } = req.body;
-        const paymentData = {
-            amount: amount * 100,
-            currency: currency || 'USD',
-            confirm: false,
-            capture_method: 'automatic',
-            customer_id: customerId || `cust_${Date.now()}`,
-            email: email || 'customer@example.com',
-            metadata: { order_id: `order_${Date.now()}` }
-        };
-
-        const response = await axios.post(`${HYPERSWITCH_URL}/payments`, paymentData, {
-            headers: {
-                'Content-Type': 'application/json',
-                'api-key': HYPERSWITCH_API_KEY,
-            }
-        });
-        const data = response.data;
-        console.log('Hyperswitch response:', data);
-        res.json({
-            clientSecret: data.client_secret,
-            paymentId: data.id
-        });
-    } catch (err) {
-        console.error('Payment creation error:', err.response?.data || err.message);
-        res.status(500).json({ error: err.response?.data || err.message });
-    }
+  try {
+    const { amount, currency, customerId, email } = req.body;
+    const paymentData = {
+      amount: amount * 100, // cents
+      currency: currency || 'USD',
+      confirm: false,
+      capture_method: 'automatic',
+      customer_id: customerId || `cust_${Date.now()}`,
+      email: email || 'customer@example.com',
+      metadata: { order_id: `order_${Date.now()}` }
+    };
+    const response = await axios.post(`${HYPERSWITCH_URL}/payments`, paymentData, {
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': HYPERSWITCH_API_KEY,
+      }
+    });
+    const data = response.data;
+    res.json({
+      clientSecret: data.client_secret,
+      paymentId: data.id
+    });
+  } catch (err) {
+    console.error('Payment creation error:', err.response?.data || err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// ---------- Proxy for all other /api/* requests ----------
-app.use('/api', async (req, res) => {
-    try {
-        const targetPath = req.originalUrl.replace('/api', '');
-        const targetUrl = `${HYPERSWITCH_URL}${targetPath}`;
-        console.log(`Proxying ${req.method} ${targetUrl}`);
-
-        const response = await axios({
-            method: req.method,
-            url: targetUrl,
-            headers: {
-                'Content-Type': 'application/json',
-                'api-key': HYPERSWITCH_API_KEY,
-            },
-            data: req.body,
-            params: req.query,
-        });
-        res.json(response.data);
-    } catch (err) {
-        console.error('Proxy error:', err.response?.data || err.message);
-        res.status(err.response?.status || 500).json({ error: err.response?.data || err.message });
-    }
-});
-
-// ---------- Ethereum RPC Proxy ----------
+// ---------- Ethereum RPC Proxy (Sepolia) ----------
 app.post('/rpc', async (req, res) => {
-    try {
-        const endpoints = [
-            'https://ethereum-sepolia.publicnode.com',
-            'https://rpc.sepolia.org',
-            'https://sepolia.gateway.tenderly.co',
-            'https://sepolia.infura.io/v3/40544311a68c4b4e83ae8ffb74aedaba'
-        ];
-        let response;
-        for (const endpoint of endpoints) {
-            try {
-                response = await axios.post(endpoint, req.body, {
-                    headers: { 'Content-Type': 'application/json' },
-                    timeout: 5000
-                });
-                break;
-            } catch (e) { /* try next */ }
-        }
-        if (!response) throw new Error('All RPC endpoints failed');
-        res.json(response.data);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+  try {
+    const endpoints = [
+      'https://ethereum-sepolia.publicnode.com',
+      'https://rpc.sepolia.org',
+      'https://sepolia.gateway.tenderly.co',
+      'https://sepolia.infura.io/v3/40544311a68c4b4e83ae8ffb74aedaba'
+    ];
+    let response;
+    for (const endpoint of endpoints) {
+      try {
+        response = await axios.post(endpoint, req.body, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 5000
+        });
+        break;
+      } catch (e) { /* try next */ }
     }
+    if (!response) throw new Error('All RPC endpoints failed');
+    res.json(response.data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ---------- Socket.io Signaling ----------
 let users = [];
-
 io.on('connection', (socket) => {
-    console.log('A user connected:', socket.id);
-    socket.on('join', (data) => {
-        users.push({ id: socket.id, username: data.username, publicKey: data.publicKey });
-        io.emit('user-list', users.map(u => ({ id: u.id, username: u.username, publicKey: u.publicKey })));
-    });
-    socket.on('signal', (data) => {
-        io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
-    });
-    socket.on('disconnect', () => {
-        users = users.filter(u => u.id !== socket.id);
-        io.emit('user-list', users.map(u => ({ id: u.id, username: u.username, publicKey: u.publicKey })));
-        console.log('User disconnected:', socket.id);
-    });
+  console.log('A user connected:', socket.id);
+  socket.on('join', (data) => {
+    users.push({ id: socket.id, username: data.username, publicKey: data.publicKey });
+    io.emit('user-list', users.map(u => ({ id: u.id, username: u.username, publicKey: u.publicKey })));
+  });
+  socket.on('signal', (data) => {
+    io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
+  });
+  socket.on('disconnect', () => {
+    users = users.filter(u => u.id !== socket.id);
+    io.emit('user-list', users.map(u => ({ id: u.id, username: u.username, publicKey: u.publicKey })));
+    console.log('User disconnected:', socket.id);
+  });
 });
 
 const PORT = 3000;
