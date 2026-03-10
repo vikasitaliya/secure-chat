@@ -48,11 +48,11 @@ app.post('/api/create-payment', async (req, res) => {
     }
 });
 
-// ---------- Catch‑all proxy for any other /api/* requests ----------
-app.all('/api/*', async (req, res) => {
+// ---------- Catch‑all proxy for any other /api/* requests (FIXED ROUTE) ----------
+app.all('/api/:path*', async (req, res) => {
     try {
         // The full original URL (e.g., /api/account/payment_methods?client_secret=...)
-        const fullPath = req.originalUrl; 
+        const fullPath = req.originalUrl;
         // Remove the '/api' prefix to get the Hyperswitch API path
         const targetPath = fullPath.replace('/api', '');
         const targetUrl = `${HYPERSWITCH_URL}${targetPath}`;
@@ -67,7 +67,7 @@ app.all('/api/*', async (req, res) => {
                 'api-key': HYPERSWITCH_API_KEY,
             },
             data: req.body,
-            params: req.query, // forward any query parameters
+            params: req.query,
         });
 
         res.json(response.data);
