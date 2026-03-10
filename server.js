@@ -11,24 +11,17 @@ app.use(express.static('public'));
 app.use(express.json());
 
 // ---------- Hyperswitch Configuration ----------
-const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTVlnDlvpxk7uE1YNvl';   // Your sandbox secret key
-const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4'; // Your sandbox publishable key
-const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';      // Sandbox environment
+const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTVlnDlvpxk7uE1YNvl';
+const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
+const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';
 
-function getHyperswitchHeaders() {
-    return {
-        'Content-Type': 'application/json',
-        'api-key': HYPERSWITCH_API_KEY,
-    };
-}
-
-// Create a payment intent
+// ---------- Specific endpoint to create a payment intent ----------
 app.post('/api/create-payment', async (req, res) => {
     try {
         console.log('Payment request body:', req.body);
         const { amount, currency, customerId, email } = req.body;
         const paymentData = {
-            amount: amount * 100, // cents
+            amount: amount * 100,
             currency: currency || 'USD',
             confirm: false,
             capture_method: 'automatic',
@@ -38,7 +31,10 @@ app.post('/api/create-payment', async (req, res) => {
         };
 
         const response = await axios.post(`${HYPERSWITCH_URL}/payments`, paymentData, {
-            headers: getHyperswitchHeaders()
+            headers: {
+                'Content-Type': 'application/json',
+                'api-key': HYPERSWITCH_API_KEY,
+            }
         });
         const data = response.data;
         console.log('Hyperswitch response:', data);
@@ -49,6 +45,35 @@ app.post('/api/create-payment', async (req, res) => {
     } catch (err) {
         console.error('Payment creation error:', err.response?.data || err.message);
         res.status(500).json({ error: err.response?.data || err.message });
+    }
+});
+
+// ---------- Catch‑all proxy for any other /api/* requests ----------
+app.all('/api/*', async (req, res) => {
+    try {
+        // The full original URL (e.g., /api/account/payment_methods?client_secret=...)
+        const fullPath = req.originalUrl; 
+        // Remove the '/api' prefix to get the Hyperswitch API path
+        const targetPath = fullPath.replace('/api', '');
+        const targetUrl = `${HYPERSWITCH_URL}${targetPath}`;
+
+        console.log(`Proxying ${req.method} ${targetUrl}`);
+
+        const response = await axios({
+            method: req.method,
+            url: targetUrl,
+            headers: {
+                'Content-Type': 'application/json',
+                'api-key': HYPERSWITCH_API_KEY,
+            },
+            data: req.body,
+            params: req.query, // forward any query parameters
+        });
+
+        res.json(response.data);
+    } catch (err) {
+        console.error('Proxy error:', err.response?.data || err.message);
+        res.status(err.response?.status || 500).json({ error: err.response?.data || err.message });
     }
 });
 
