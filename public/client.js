@@ -628,20 +628,20 @@ if (hyperswitchPayBtn) {
             hyperswitchInstance = Hyper({
                 clientSecret: data.clientSecret,
                 fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }],
-                customBackendUrl: '/api'  // <-- KEY FIX: route all API calls through our server
+                customBackendUrl: '/api'
             });
             console.log('✅ Hyper instance created, type:', typeof hyperswitchInstance);
 
-            // 2. Create elements
+            // 2. Create elements – pass clientSecret again
             console.log('🟢 2. Creating elements...');
-            hyperswitchElements = hyperswitchInstance.elements();
+            hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
             console.log('✅ Elements created');
 
-            // 3. Create payment element (no extra options – use defaults)
+            // 3. Create payment element (no extra options)
             console.log('🟢 3. Creating payment element...');
             let paymentElement;
             try {
-                paymentElement = hyperswitchElements.create('payment'); // <-- SIMPLIFIED
+                paymentElement = hyperswitchElements.create('payment');
                 console.log('✅ Payment element created');
                 console.log('Does paymentElement have mount?', typeof paymentElement.mount === 'function');
             } catch (e) {
