@@ -48,8 +48,8 @@ app.post('/api/create-payment', async (req, res) => {
     }
 });
 
-// ---------- Catch‑all proxy for any other /api/* requests (FIXED ROUTE) ----------
-app.all('/api/:path*', async (req, res) => {
+// Catch‑all proxy for any other /api/* requests (CORRECT SYNTAX)
+app.all('/api/*', async (req, res) => {
     try {
         // The full original URL (e.g., /api/account/payment_methods?client_secret=...)
         const fullPath = req.originalUrl;
