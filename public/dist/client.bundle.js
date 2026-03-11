@@ -11,159 +11,9 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// node_modules/@juspay-tech/hyper-js/dist/index.mjs
-function f(r) {
-  if (!(r !== null && r.BS_PRIVATE_NESTED_SOME_NONE !== void 0)) return r;
-  var e = r.BS_PRIVATE_NESTED_SOME_NONE;
-  if (e !== 0) return { BS_PRIVATE_NESTED_SOME_NONE: e - 1 | 0 };
-}
-function h(r, e) {
-  if (r <= 0) return [];
-  for (var n = new Array(r), t = 0; t < r; ++t) n[t] = e;
-  return n;
-}
-function H(r) {
-  var e = Object.prototype.toString.call(r);
-  switch (e) {
-    case "[object Array]":
-      return { TAG: "Array", _0: r };
-    case "[object Boolean]":
-      return { TAG: "Bool", _0: r };
-    case "[object Null]":
-      return "Null";
-    case "[object Number]":
-      return { TAG: "Number", _0: r };
-    case "[object String]":
-      return { TAG: "String", _0: r };
-    default:
-      return { TAG: "Object", _0: r };
-  }
-}
-function F(r) {
-  if (typeof r == "boolean") return r;
-}
-function L(r) {
-  if (r === null) return null;
-}
-function W(r) {
-  if (typeof r == "string") return r;
-}
-function x(r) {
-  if (typeof r == "number") return r;
-}
-function V(r) {
-  if (typeof r == "object" && !Array.isArray(r) && r !== null) return r;
-}
-function q(r) {
-  if (Array.isArray(r)) return r;
-}
-function G(r) {
-  return Math.floor(r) | 0;
-}
-function z(r, e) {
-  var n = Math.random() * (e - r | 0);
-  return (Math.floor(n) | 0) + r | 0;
-}
-function E(r, e, n) {
-  return r.reduce(n, e);
-}
-function C(r, e) {
-  if (r !== void 0) return e(f(r));
-}
-function o(r, e) {
-  return r !== void 0 ? f(r) : e;
-}
-function I() {
-  var r = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  return E(h(32, 0), "", function(e, n) {
-    var t = w.random(0, r.length), c = r.charAt(t);
-    return e + c;
-  });
-}
-function O(r) {
-  var e = r !== void 0 ? o(i.object(r), {}) : {}, n = e.env;
-  if (n === void 0) return "";
-  var t = i.string(n);
-  return t !== void 0 ? t.toLowerCase() : "";
-}
-function N(r) {
-  var e = r !== void 0 ? o(i.object(r), {}) : {}, n = e.version;
-  if (n === void 0) return "";
-  var t = i.string(n);
-  return t !== void 0 ? t.toLowerCase() : "";
-}
-function Y(r, e) {
-  var n = y.classify(r), t;
-  if (typeof n != "object") t = "";
-  else switch (n.TAG) {
-    case "String":
-      t = n._0;
-      break;
-    case "Object":
-      t = o(C(n._0.publishableKey, i.string), "");
-      break;
-    default:
-      t = "";
-  }
-  return new Promise(function(c, S) {
-    var b = I(), T = Date.now(), v = N(e), U = O(e), u, l = 0;
-    switch (U) {
-      case "prod":
-        switch (v) {
-          case "v1":
-            u = "https://checkout.hyperswitch.io/v0/HyperLoader.js";
-            break;
-          case "v2":
-            u = "https://checkout.hyperswitch.io/v2/HyperLoader.js";
-            break;
-          default:
-            l = 1;
-        }
-        break;
-      case "sandbox":
-        switch (v) {
-          case "v1":
-            u = "https://beta.hyperswitch.io/v1/HyperLoader.js";
-            break;
-          case "v2":
-            u = "https://beta.hyperswitch.io/v2/HyperLoader.js";
-            break;
-          default:
-            l = 1;
-        }
-        break;
-      default:
-        l = 1;
-    }
-    l === 1 && (u = v === "v2" ? t.startsWith("pk_prd_") ? "https://checkout.hyperswitch.io/v2/HyperLoader.js" : "https://beta.hyperswitch.io/v2/HyperLoader.js" : t.startsWith("pk_prd_") ? "https://checkout.hyperswitch.io/v0/HyperLoader.js" : "https://beta.hyperswitch.io/v1/HyperLoader.js");
-    var m = Object.fromEntries([["sessionID", b], ["timeStamp", T.toString()]]);
-    if (document.querySelectorAll('script[src="' + u + '"]').length === 0) {
-      var a = document.createElement("script");
-      a.src = u, a.onload = function() {
-        var s = window.Hyper;
-        if (s != null) return c(s(r, e, m));
-      }, a.onerror = function(s) {
-        S(s);
-      }, document.body.appendChild(a);
-      return;
-    }
-    console.warn("INTEGRATION WARNING: There is already an existing script tag for " + u + ". Multiple additions of HyperLoader.js is not permitted, please add it on the top level only once.");
-    var d = window.Hyper;
-    if (d != null) return c(d(r, e, m));
-  });
-}
-var y, i, w;
-var init_dist = __esm({
-  "node_modules/@juspay-tech/hyper-js/dist/index.mjs"() {
-    y = { classify: H };
-    i = { bool: F, $$null: L, string: W, $$float: x, object: V, array: q };
-    w = { floor: G, random: z };
-  }
-});
-
 // node_modules/@capacitor/core/dist/index.js
 var ExceptionCode, CapacitorException, getPlatformId, createCapacitor, initCapacitorGlobal, Capacitor2, registerPlugin, WebPlugin, encode, decode, CapacitorCookiesPluginWeb, CapacitorCookies, readBlobAsBase64, normalizeHttpHeaders, buildUrlParams, buildRequestInit, CapacitorHttpPluginWeb, CapacitorHttp, SystemBarsStyle, SystemBarType, SystemBarsPluginWeb, SystemBars;
-var init_dist2 = __esm({
+var init_dist = __esm({
   "node_modules/@capacitor/core/dist/index.js"() {
     (function(ExceptionCode2) {
       ExceptionCode2["Unimplemented"] = "UNIMPLEMENTED";
@@ -207,7 +57,7 @@ var init_dist2 = __esm({
       };
       const getPluginHeader = (pluginName) => {
         var _a;
-        return (_a = cap.PluginHeaders) === null || _a === void 0 ? void 0 : _a.find((h2) => h2.name === pluginName);
+        return (_a = cap.PluginHeaders) === null || _a === void 0 ? void 0 : _a.find((h) => h.name === pluginName);
       };
       const handleError = (err) => win.console.error(err);
       const registeredPlugins = /* @__PURE__ */ new Map();
@@ -704,8 +554,8 @@ var init_definitions = __esm({
        */
       static convertHexToBytes(hex) {
         const bytes = [];
-        for (let i2 = 0; i2 < hex.length; i2 += 2) {
-          bytes.push(parseInt(hex.substr(i2, 2), 16));
+        for (let i = 0; i < hex.length; i += 2) {
+          bytes.push(parseInt(hex.substr(i, 2), 16));
         }
         return bytes;
       }
@@ -751,7 +601,7 @@ __export(web_exports, {
 var BluetoothLowEnergyWeb;
 var init_web = __esm({
   "node_modules/@capgo/capacitor-bluetooth-low-energy/dist/esm/web.js"() {
-    init_dist2();
+    init_dist();
     BluetoothLowEnergyWeb = class extends WebPlugin {
       constructor() {
         super(...arguments);
@@ -929,8 +779,8 @@ var init_web = __esm({
         const characteristic = await service.getCharacteristic(options.characteristic);
         const dataView = await characteristic.readValue();
         const value = [];
-        for (let i2 = 0; i2 < dataView.byteLength; i2++) {
-          value.push(dataView.getUint8(i2));
+        for (let i = 0; i < dataView.byteLength; i++) {
+          value.push(dataView.getUint8(i));
         }
         return { value };
       }
@@ -963,8 +813,8 @@ var init_web = __esm({
           if (!dataView)
             return;
           const value = [];
-          for (let i2 = 0; i2 < dataView.byteLength; i2++) {
-            value.push(dataView.getUint8(i2));
+          for (let i = 0; i < dataView.byteLength; i++) {
+            value.push(dataView.getUint8(i));
           }
           this.notifyListeners("characteristicChanged", {
             deviceId: options.deviceId,
@@ -1008,8 +858,8 @@ var init_web = __esm({
         }
         const dataView = await descriptor.readValue();
         const value = [];
-        for (let i2 = 0; i2 < dataView.byteLength; i2++) {
-          value.push(dataView.getUint8(i2));
+        for (let i = 0; i < dataView.byteLength; i++) {
+          value.push(dataView.getUint8(i));
         }
         return { value };
       }
@@ -1071,7 +921,7 @@ __export(esm_exports, {
 var BluetoothLowEnergy;
 var init_esm = __esm({
   "node_modules/@capgo/capacitor-bluetooth-low-energy/dist/esm/index.js"() {
-    init_dist2();
+    init_dist();
     init_definitions();
     BluetoothLowEnergy = registerPlugin("BluetoothLowEnergy", {
       web: () => Promise.resolve().then(() => (init_web(), web_exports)).then((m) => new m.BluetoothLowEnergyWeb())
@@ -1082,7 +932,6 @@ var init_esm = __esm({
 // public/client.js
 var require_client = __commonJS({
   "public/client.js"() {
-    init_dist();
     var socket = io("http://localhost:3000");
     var myUsername = null;
     var myKeyPair = null;
@@ -1125,6 +974,9 @@ var require_client = __commonJS({
     var hyperswitchPayBtn = document.getElementById("hyperswitch-pay-button");
     var hyperswitchStatus = document.getElementById("hyperswitch-status");
     var hyperswitchElementDiv = document.getElementById("hyperswitch-payment-element");
+    var HYPERSWITCH_PUBLISHABLE_KEY = "pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4";
+    var hyperswitchInstance = null;
+    var hyperswitchElements = null;
     joinBtn.addEventListener("click", async () => {
       const name = usernameInput.value.trim();
       if (!name) return;
@@ -1171,14 +1023,8 @@ var require_client = __commonJS({
     async function importPublicKey(base64Key) {
       const binary = atob(base64Key);
       const buffer = new Uint8Array(binary.length);
-      for (let i2 = 0; i2 < binary.length; i2++) buffer[i2] = binary.charCodeAt(i2);
-      return await crypto.subtle.importKey(
-        "raw",
-        buffer,
-        { name: "ECDH", namedCurve: "P-256" },
-        true,
-        []
-      );
+      for (let i = 0; i < binary.length; i++) buffer[i] = binary.charCodeAt(i);
+      return await crypto.subtle.importKey("raw", buffer, { name: "ECDH", namedCurve: "P-256" }, true, []);
     }
     async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
       if (peers[targetId]) {
@@ -1289,8 +1135,8 @@ var require_client = __commonJS({
           } else if (obj.type === "file-chunk") {
             const decrypted = CryptoJS.AES.decrypt(obj.data, encryptionKey);
             const decryptedBytes = new Uint8Array(decrypted.sigBytes);
-            for (let i2 = 0; i2 < decrypted.sigBytes; i2++) {
-              decryptedBytes[i2] = decrypted.words[i2 >>> 2] >>> 24 - i2 % 4 * 8 & 255;
+            for (let i = 0; i < decrypted.sigBytes; i++) {
+              decryptedBytes[i] = decrypted.words[i >>> 2] >>> 24 - i % 4 * 8 & 255;
             }
             receivingFile.chunks.push(decryptedBytes);
             receivingFile.received += decryptedBytes.length;
@@ -1631,6 +1477,10 @@ var require_client = __commonJS({
     if (refreshBalancesBtn) refreshBalancesBtn.addEventListener("click", refreshBalances);
     if (hyperswitchPayBtn) {
       hyperswitchPayBtn.addEventListener("click", async () => {
+        if (typeof Hyper === "undefined") {
+          hyperswitchStatus.textContent = "\u274C Hyperswitch SDK not loaded.";
+          return;
+        }
         const amount = parseFloat(prompt("Enter amount in USD (e.g., 10):"));
         if (!amount || amount <= 0) {
           alert("Please enter a valid amount");
@@ -1644,7 +1494,6 @@ var require_client = __commonJS({
           hyperswitchStatus.textContent = "Creating payment...";
           const oldConfirm = document.getElementById("hyperswitch-confirm-button");
           if (oldConfirm) oldConfirm.remove();
-          hyperswitchElementDiv.innerHTML = "";
           const response = await fetch("/api/create-payment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1655,30 +1504,16 @@ var require_client = __commonJS({
               email: `${userWallet.address}@example.com`
             })
           });
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || "Payment creation failed");
-          }
           const data = await response.json();
           if (!data.clientSecret) throw new Error("No client secret received");
-          console.log("\u{1F535} CLIENT SECRET:", data.clientSecret);
           hyperswitchStatus.textContent = "";
-          console.log("\u{1F7E2} 1. Loading Hyper SDK with loadHyper...");
-          const hyper = await Y({
-            clientSecret: data.clientSecret,
-            customBackendUrl: "/api",
-            fonts: [{ cssSrc: "https://fonts.googleapis.com/css?family=Roboto" }]
+          hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY);
+          hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
+          const paymentElement = hyperswitchElements.create("payment", {
+            layout: "tabs"
+            // 'tabs' or 'accordion' – whichever you like
           });
-          console.log("\u2705 Hyper instance created");
-          console.log("\u{1F7E2} 2. Creating elements...");
-          const elements = hyper.elements({ clientSecret: data.clientSecret });
-          console.log("\u2705 Elements created");
-          console.log("\u{1F7E2} 3. Creating payment element...");
-          const paymentElement = elements.create("payment");
-          console.log("\u2705 Payment element created");
-          console.log("\u{1F7E2} 4. Mounting element...");
           paymentElement.mount("#hyperswitch-payment-element");
-          console.log("\u2705 Mount succeeded \u2013 payment form should appear.");
           const confirmBtn = document.createElement("button");
           confirmBtn.id = "hyperswitch-confirm-button";
           confirmBtn.textContent = "Confirm Payment";
@@ -1688,16 +1523,21 @@ var require_client = __commonJS({
             confirmBtn.disabled = true;
             hyperswitchStatus.textContent = "Processing...";
             try {
-              const { error } = await hyper.confirmPayment({
-                elements,
+              const { error, status } = await hyperswitchInstance.confirmPayment({
+                elements: hyperswitchElements,
                 confirmParams: { return_url: window.location.origin + "/payment-success.html" }
               });
               if (error) {
                 console.error("Payment error:", error);
                 hyperswitchStatus.textContent = "\u274C Payment failed: " + error.message;
                 confirmBtn.disabled = false;
-              } else {
-                hyperswitchStatus.textContent = "\u2705 Payment successful!";
+              } else if (status) {
+                console.log("Payment status:", status);
+                if (status === "succeeded") {
+                  hyperswitchStatus.textContent = "\u2705 Payment successful!";
+                } else {
+                  hyperswitchStatus.textContent = `\u2139\uFE0F Payment status: ${status}`;
+                }
                 confirmBtn.remove();
               }
             } catch (err) {
@@ -1705,9 +1545,9 @@ var require_client = __commonJS({
               hyperswitchStatus.textContent = "\u274C Error: " + err.message;
               confirmBtn.disabled = false;
             }
-          });
+          }, { once: true });
         } catch (err) {
-          console.error("\u274C Hyperswitch init error:", err);
+          console.error("Hyperswitch init error:", err);
           hyperswitchStatus.textContent = "\u274C Error: " + err.message;
         }
       });
