@@ -1,5 +1,5 @@
-// public/client.js – FINAL VERSION with all features
-const socket = io('https://secure-chat-jqnr.onrender.com');
+// public/client.js – FINAL VERSION with polished UI
+const socket = io('https://secure-chat-jqnr.onrender.com'); // Your live Render URL
 
 // ---------- Core Chat ----------
 let myUsername = null;
@@ -22,9 +22,12 @@ let userWallet = null;
 let provider = null;
 const currentNetwork = { chainId: 11155111, name: 'Sepolia', rpcUrl: '/rpc' };
 
+// ---------- Hyperswitch Keys ----------
+const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
+
 // ---------- DOM Elements ----------
 const loginDiv = document.getElementById('login');
-const chatDiv = document.getElementById('chat');
+const mainDiv = document.getElementById('main');
 const usernameInput = document.getElementById('username');
 const joinBtn = document.getElementById('joinBtn');
 const userList = document.getElementById('userList');
@@ -49,9 +52,6 @@ const refreshBalancesBtn = document.getElementById('refresh-balances');
 const hyperswitchPayBtn = document.getElementById('hyperswitch-pay-button');
 const hyperswitchStatus = document.getElementById('hyperswitch-status');
 const hyperswitchElementDiv = document.getElementById('hyperswitch-payment-element');
-
-// ---------- Hyperswitch Keys ----------
-const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
 
 // ---------- Hyperswitch State ----------
 let hyperswitchInstance = null;
@@ -87,7 +87,7 @@ joinBtn.addEventListener('click', async () => {
   socket.emit('join', { username: name, publicKey: publicKeyBase64 });
 
   loginDiv.style.display = 'none';
-  chatDiv.style.display = 'block';
+  mainDiv.style.display = 'flex';
 });
 
 socket.on('user-list', (users) => {
@@ -236,7 +236,8 @@ function setupDataChannel(channel, targetId) {
       } else if (obj.type === 'wallet-address') {
         peer.walletAddress = obj.address;
         const msgDiv = document.createElement('div');
-        msgDiv.textContent = `🔗 Peer's wallet address received.`;
+        msgDiv.className = 'message them';
+        msgDiv.innerHTML = `<div>🔗 Peer's wallet address received.</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
         messagesDiv.appendChild(msgDiv);
         updateRecipientField();
       } else { console.log('Unknown JSON type', obj.type); }
@@ -247,7 +248,8 @@ function setupDataChannel(channel, targetId) {
         const plaintext = bytes.toString(CryptoJS.enc.Utf8);
         if (plaintext) {
           const msgDiv = document.createElement('div');
-          msgDiv.textContent = `Them: ${plaintext}`;
+          msgDiv.className = 'message them';
+          msgDiv.innerHTML = `<div>Them: ${plaintext}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
           messagesDiv.appendChild(msgDiv);
         } else { console.warn('Decryption failed – wrong key?'); }
       } catch (decryptErr) { console.error('Decryption error:', decryptErr); }
@@ -273,7 +275,8 @@ sendBtn.addEventListener('click', () => {
     } else { console.warn('❌ Channel not open for', targetId); }
   }
   const msgDiv = document.createElement('div');
-  msgDiv.textContent = `Me: ${text}`;
+  msgDiv.className = 'message me';
+  msgDiv.innerHTML = `<div>Me: ${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
   messagesDiv.appendChild(msgDiv);
   messageInput.value = '';
 });
@@ -314,7 +317,7 @@ function sendFileViaChannel(channel, file, encryptionKey) {
 }
 
 // ------------------------------------------------------------
-// 4. BLE Functions (unchanged)
+// 4. BLE Functions (full)
 // ------------------------------------------------------------
 async function getBLEPlugin() {
   if (typeof Capacitor === 'undefined' || !Capacitor.isNative) return null;
@@ -406,7 +409,8 @@ function getKeyForPeer(peerId) { return peerKeys[peerId]; }
 function displayBLEChatMessage(peerId, text, sender) {
   const shortId = peerId.substring(0, 6);
   const msgDiv = document.createElement('div');
-  msgDiv.textContent = `[BLE ${shortId}] ${sender}: ${text}`;
+  msgDiv.className = 'message them';
+  msgDiv.innerHTML = `<div>[BLE ${shortId}] ${sender}: ${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
   messagesDiv.appendChild(msgDiv);
 }
 if (enableBLEBtn) {
@@ -524,7 +528,7 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch – Full Payment Element (shows all enabled methods)
+// 6. Hyperswitch Global Payment Integration (full payment element)
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
   hyperswitchPayBtn.addEventListener('click', async () => {
@@ -542,7 +546,6 @@ if (hyperswitchPayBtn) {
       const oldConfirm = document.getElementById('hyperswitch-confirm-button');
       if (oldConfirm) oldConfirm.remove();
 
-      // 1. Create payment intent
       const response = await fetch('/api/create-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -557,26 +560,18 @@ if (hyperswitchPayBtn) {
       if (!data.clientSecret) throw new Error('No client secret received');
       hyperswitchStatus.textContent = '';
 
-      // 2. Initialize Hyper (use default backend – sandbox automatically)
       hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY);
 
-      // 3. Create elements with the client secret
       hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
-
-      // 4. Create the FULL payment element – this shows all methods enabled in dashboard
-      const paymentElement = hyperswitchElements.create('payment', {
-        layout: 'tabs'   // 'tabs' or 'accordion' – whichever you like
-      });
+      const paymentElement = hyperswitchElements.create('payment', { layout: 'tabs' });
       paymentElement.mount('#hyperswitch-payment-element');
 
-      // 5. Create confirm button
       const confirmBtn = document.createElement('button');
       confirmBtn.id = 'hyperswitch-confirm-button';
       confirmBtn.textContent = 'Confirm Payment';
       confirmBtn.style.marginTop = '10px';
       hyperswitchElementDiv.after(confirmBtn);
 
-      // 6. Confirm payment
       confirmBtn.addEventListener('click', async function confirmHandler() {
         confirmBtn.disabled = true;
         hyperswitchStatus.textContent = 'Processing...';
