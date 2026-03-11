@@ -1,14 +1,16 @@
-// public/client.js - Quantum Edition (Fully functional)
+// public/client.js - with GROUP CHATS
 const socket = io('https://secure-chat-jqnr.onrender.com'); // Your live URL
 
 let myUsername = null;
 let myKeyPair = null;
-let peers = {};
+let peers = {};               // one‑on‑one connections
+let groups = {};              // { groupId: { name, members, key, messages } }
+let currentGroupId = null;    // which group is currently open
 let receivingFile = null;
 let lastUserList = [];
 let typingTimeout = null;
 
-// BLE
+// BLE (unchanged)
 let bleEnabled = false;
 let bleAdvertising = false;
 let bleScanning = false;
@@ -27,7 +29,7 @@ const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
 let hyperswitchInstance = null;
 let hyperswitchElements = null;
 
-// DOM Elements
+// DOM Elements (new ones added)
 const loginDiv = document.getElementById('login');
 const mainDiv = document.getElementById('main');
 const usernameInput = document.getElementById('username');
@@ -56,8 +58,15 @@ const hyperswitchStatus = document.getElementById('hyperswitch-status');
 const hyperswitchElementDiv = document.getElementById('hyperswitch-payment-element');
 const typingIndicator = document.getElementById('typing-indicator');
 
+// NEW group elements
+const createGroupBtn = document.getElementById('createGroupBtn');
+const groupListDiv = document.getElementById('groupList');
+const groupChatHeader = document.getElementById('groupChatHeader');
+const currentGroupNameSpan = document.getElementById('currentGroupName');
+const leaveGroupBtn = document.getElementById('leaveGroupBtn');
+
 // ------------------------------------------------------------
-// 1. Key generation & wallet derivation
+// 1. Key generation & wallet derivation (unchanged)
 // ------------------------------------------------------------
 joinBtn.addEventListener('click', async () => {
   const name = usernameInput.value.trim();
@@ -107,87 +116,156 @@ socket.on('user-list', (users) => {
   });
 });
 
-async function importPublicKey(base64Key) {
-  const binary = atob(base64Key);
-  const buffer = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) buffer[i] = binary.charCodeAt(i);
-  return await crypto.subtle.importKey("raw", buffer, { name: "ECDH", namedCurve: "P-256" }, true, []);
+// ... (keep all existing functions: importPublicKey, startChat, WebRTC signaling, etc.)
+// For brevity, I'm not repeating all the existing code here – you must keep it.
+// Instead, I'll provide the new group functions and indicate where to insert them.
+
+// ========== NEW GROUP CHAT FUNCTIONS ==========
+
+// Generate a random AES key for a group
+function generateGroupKey() {
+  return CryptoJS.lib.WordArray.random(32).toString(); // 256-bit key as hex string
 }
 
-async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
-  if (peers[targetId]) { alert(`Already connected to ${targetUsername}`); return; }
-  const targetPublicKey = await importPublicKey(targetPublicKeyBase64);
-  const sharedSecretBits = await crypto.subtle.deriveBits(
-    { name: "ECDH", public: targetPublicKey }, myKeyPair.privateKey, 256
-  );
-  const sharedSecretBase64 = btoa(String.fromCharCode(...new Uint8Array(sharedSecretBits)));
-  peers[targetId] = { encryptionKey: sharedSecretBase64, dataChannel: null, peerConnection: null, walletAddress: null };
-  const peer = createPeerConnection(targetId, false);
-  try {
-    const offer = await peer.createOffer();
-    await peer.setLocalDescription(offer);
-    socket.emit('signal', { to: targetId, signal: offer });
-  } catch (err) { console.error('Error creating offer:', err); }
-}
+// Create a new group
+createGroupBtn.addEventListener('click', () => {
+  // Show a modal/dialog to select members (we'll use a simple prompt for now)
+  const memberIds = prompt('Enter member IDs (comma‑separated) from the user list:');
+  if (!memberIds) return;
+  const selectedIds = memberIds.split(',').map(id => id.trim()).filter(id => id);
+  if (selectedIds.length === 0) return;
 
-// ------------------------------------------------------------
-// 2. WebRTC Signaling
-// ------------------------------------------------------------
-socket.on('signal', async (data) => {
-  const { from, signal } = data;
-  if (!peers[from]) {
-    let userInfo = lastUserList.find(u => u.id === from);
-    let retries = 0;
-    while (!userInfo && retries < 10) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-      userInfo = lastUserList.find(u => u.id === from);
-      retries++;
+  const groupName = prompt('Enter group name:') || 'Unnamed Group';
+  const groupId = 'group_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+  const groupKey = generateGroupKey();
+
+  // Store group locally
+  groups[groupId] = {
+    name: groupName,
+    members: selectedIds,
+    key: groupKey,
+    messages: []
+  };
+
+  // Send group key to each member via their peer channel
+  selectedIds.forEach(targetId => {
+    const peer = peers[targetId];
+    if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
+      const inviteMsg = {
+        type: 'group-invite',
+        groupId: groupId,
+        groupName: groupName,
+        key: groupKey,
+        members: selectedIds
+      };
+      peer.dataChannel.send(JSON.stringify(inviteMsg));
+    } else {
+      console.warn(`Peer ${targetId} not connected, cannot invite.`);
     }
-    if (userInfo && userInfo.publicKey) {
-      const targetPublicKey = await importPublicKey(userInfo.publicKey);
-      const sharedSecretBits = await crypto.subtle.deriveBits(
-        { name: "ECDH", public: targetPublicKey }, myKeyPair.privateKey, 256
-      );
-      const sharedSecretBase64 = btoa(String.fromCharCode(...new Uint8Array(sharedSecretBits)));
-      peers[from] = { encryptionKey: sharedSecretBase64, dataChannel: null, peerConnection: null, walletAddress: null };
-      createPeerConnection(from, true);
-    } else { console.warn('Cannot create peer: no public key for', from); return; }
-  }
-  const peer = peers[from].peerConnection;
-  if (!peer) return;
-  if (signal.type === 'offer') {
-    await peer.setRemoteDescription(new RTCSessionDescription(signal));
-    const answer = await peer.createAnswer();
-    await peer.setLocalDescription(answer);
-    socket.emit('signal', { to: from, signal: answer });
-  } else if (signal.type === 'answer') {
-    await peer.setRemoteDescription(new RTCSessionDescription(signal));
-  } else if (signal.candidate) {
-    await peer.addIceCandidate(new RTCIceCandidate(signal));
-  }
+  });
+
+  renderGroupList();
+  openGroupChat(groupId);
 });
 
-function createPeerConnection(targetId, isReceiver) {
-  const config = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-    ]
+// Handle group invite received via data channel
+function handleGroupInvite(data) {
+  const { groupId, groupName, key, members } = data;
+  if (groups[groupId]) return; // already have it
+  groups[groupId] = {
+    name: groupName,
+    members: members,
+    key: key,
+    messages: []
   };
-  const peer = new RTCPeerConnection(config);
-  peer.onicecandidate = (event) => {
-    if (event.candidate) socket.emit('signal', { to: targetId, signal: event.candidate });
-  };
-  if (!isReceiver) {
-    const channel = peer.createDataChannel('chat');
-    setupDataChannel(channel, targetId);
-  } else {
-    peer.ondatachannel = (event) => setupDataChannel(event.channel, targetId);
-  }
-  peers[targetId].peerConnection = peer;
-  return peer;
+  renderGroupList();
+  // Optionally auto‑join or notify
+  appendSystemMessage(`You were added to group "${groupName}"`, 'them');
 }
+
+// Render the list of groups in the left panel
+function renderGroupList() {
+  groupListDiv.innerHTML = '';
+  Object.keys(groups).forEach(groupId => {
+    const group = groups[groupId];
+    const div = document.createElement('div');
+    div.textContent = group.name;
+    div.style.padding = '10px';
+    div.style.margin = '5px 0';
+    div.style.background = 'rgba(255,255,255,0.05)';
+    div.style.borderRadius = '20px';
+    div.style.cursor = 'pointer';
+    div.addEventListener('click', () => openGroupChat(groupId));
+    groupListDiv.appendChild(div);
+  });
+}
+
+// Open a group chat
+function openGroupChat(groupId) {
+  currentGroupId = groupId;
+  const group = groups[groupId];
+  currentGroupNameSpan.textContent = group.name;
+  groupChatHeader.style.display = 'block';
+  // Clear messages and display group messages
+  messagesDiv.innerHTML = '';
+  group.messages.forEach(msg => {
+    appendMessage(msg.text, msg.sender === myUsername ? 'me' : 'them', true);
+  });
+}
+
+// Leave current group
+leaveGroupBtn.addEventListener('click', () => {
+  currentGroupId = null;
+  groupChatHeader.style.display = 'none';
+  messagesDiv.innerHTML = ''; // clear chat area
+});
+
+// Override send button to handle group messages
+const originalSendClick = sendBtn.onclick;
+sendBtn.onclick = () => {
+  const text = messageInput.value.trim();
+  if (!text) return;
+
+  if (currentGroupId) {
+    // Send group message
+    const group = groups[currentGroupId];
+    const encrypted = CryptoJS.AES.encrypt(text, group.key).toString();
+    const groupMsg = {
+      type: 'group-text',
+      groupId: currentGroupId,
+      data: encrypted
+    };
+    // Broadcast to all group members via their peer channels
+    group.members.forEach(memberId => {
+      const peer = peers[memberId];
+      if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
+        peer.dataChannel.send(JSON.stringify(groupMsg));
+      }
+    });
+    // Add to local messages
+    group.messages.push({ text, sender: myUsername, timestamp: Date.now() });
+    appendMessage(text, 'me', true);
+  } else {
+    // Original one‑on‑one send logic
+    for (let targetId in peers) {
+      const channel = peers[targetId].dataChannel;
+      const key = peers[targetId].encryptionKey;
+      if (channel && channel.readyState === 'open') {
+        try {
+          const encrypted = CryptoJS.AES.encrypt(text, key).toString();
+          channel.send(encrypted);
+        } catch (err) { console.error('Send error:', err); }
+      }
+    }
+    appendMessage(text, 'me', false);
+  }
+  messageInput.value = '';
+};
+
+// Modify the message handler in setupDataChannel to handle group messages
+// In the existing messageHandler, add a branch for 'group-text' and 'group-invite'
+// You'll need to integrate this into your existing setupDataChannel function.
+// Here's the updated messageHandler (replace the old one):
 
 function setupDataChannel(channel, targetId) {
   if (channel._messageHandlerAttached) return;
@@ -205,12 +283,41 @@ function setupDataChannel(channel, targetId) {
     const peer = peers[targetId];
     if (!peer) return;
     const encryptionKey = peer.encryptionKey;
+
     try {
       const obj = JSON.parse(event.data);
+
+      // ---- GROUP INVITE ----
+      if (obj.type === 'group-invite') {
+        handleGroupInvite(obj);
+        return;
+      }
+
+      // ---- GROUP TEXT MESSAGE ----
+      if (obj.type === 'group-text') {
+        const group = groups[obj.groupId];
+        if (group) {
+          const bytes = CryptoJS.AES.decrypt(obj.data, group.key);
+          const plaintext = bytes.toString(CryptoJS.enc.Utf8);
+          if (plaintext) {
+            group.messages.push({ text: plaintext, sender: 'Them', timestamp: Date.now() });
+            if (currentGroupId === obj.groupId) {
+              appendMessage(plaintext, 'them', true);
+            }
+          }
+        }
+        return;
+      }
+
+      // ---- FILE META ----
       if (obj.type === 'file-meta') {
         receivingFile = { name: obj.name, size: obj.size, mime: obj.mime, received: 0, chunks: [] };
         progressDiv.innerHTML += `<div>📥 Receiving file: ${obj.name}</div>`;
-      } else if (obj.type === 'file-chunk') {
+        return;
+      }
+
+      // ---- FILE CHUNK ----
+      if (obj.type === 'file-chunk') {
         const decrypted = CryptoJS.AES.decrypt(obj.data, encryptionKey);
         const decryptedBytes = new Uint8Array(decrypted.sigBytes);
         for (let i = 0; i < decrypted.sigBytes; i++) {
@@ -231,18 +338,24 @@ function setupDataChannel(channel, targetId) {
           progressDiv.innerHTML += `<div>✅ File "${receivingFile.name}" received.</div>`;
           receivingFile = null;
         }
-      } else if (obj.type === 'wallet-address') {
+        return;
+      }
+
+      // ---- WALLET ADDRESS ----
+      if (obj.type === 'wallet-address') {
         peer.walletAddress = obj.address;
-        appendMessage('🔗 Peer wallet address received', 'them');
+        appendMessage('🔗 Peer wallet address received', 'them', false);
         updateRecipientField();
-      } else { console.log('Unknown JSON type', obj.type); }
+        return;
+      }
+
     } catch (e) {
-      // Text message
+      // Not JSON – assume it's an encrypted one‑on‑one text message
       try {
         const bytes = CryptoJS.AES.decrypt(event.data, encryptionKey);
         const plaintext = bytes.toString(CryptoJS.enc.Utf8);
         if (plaintext) {
-          appendMessage(plaintext, 'them');
+          appendMessage(plaintext, 'them', false);
         }
       } catch (decryptErr) { console.error('Decryption error:', decryptErr); }
     }
@@ -250,86 +363,14 @@ function setupDataChannel(channel, targetId) {
   channel.addEventListener('message', messageHandler);
 }
 
-// Helper to append message with animation
-function appendMessage(text, sender) {
+// Helper to append message (modified to optionally show group indicator)
+function appendMessage(text, sender, isGroup = false) {
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${sender}`;
-  msgDiv.innerHTML = `<div>${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+  const prefix = isGroup ? `[Group] ` : '';
+  msgDiv.innerHTML = `<div>${prefix}${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
   messagesDiv.appendChild(msgDiv);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
-}
-
-// Typing indicator (optional)
-messageInput.addEventListener('input', () => {
-  if (!myUsername) return;
-  clearTimeout(typingTimeout);
-  socket.emit('typing', { username: myUsername });
-  typingTimeout = setTimeout(() => {
-    socket.emit('stop-typing');
-  }, 1000);
-});
-
-socket.on('typing', (data) => {
-  if (typingIndicator) typingIndicator.style.display = 'flex';
-});
-socket.on('stop-typing', () => {
-  if (typingIndicator) typingIndicator.style.display = 'none';
-});
-
-// ------------------------------------------------------------
-// 3. Sending messages & files
-// ------------------------------------------------------------
-sendBtn.addEventListener('click', () => {
-  const text = messageInput.value.trim();
-  if (!text) return;
-  for (let targetId in peers) {
-    const channel = peers[targetId].dataChannel;
-    const key = peers[targetId].encryptionKey;
-    if (channel && channel.readyState === 'open') {
-      try {
-        const encrypted = CryptoJS.AES.encrypt(text, key).toString();
-        channel.send(encrypted);
-      } catch (err) { console.error('Send error:', err); }
-    }
-  }
-  appendMessage(text, 'me');
-  messageInput.value = '';
-});
-
-messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
-
-sendFileBtn.addEventListener('click', () => {
-  const file = fileInput.files[0];
-  if (!file) { alert('Choose a file first'); return; }
-  for (let targetId in peers) {
-    const channel = peers[targetId].dataChannel;
-    const key = peers[targetId].encryptionKey;
-    if (channel && channel.readyState === 'open') sendFileViaChannel(channel, file, key);
-  }
-});
-
-function sendFileViaChannel(channel, file, encryptionKey) {
-  const CHUNK_SIZE = 64 * 1024;
-  const reader = new FileReader();
-  let offset = 0;
-  const metadata = { type: 'file-meta', name: file.name, size: file.size, mime: file.type };
-  channel.send(JSON.stringify(metadata));
-  reader.onload = (e) => {
-    const chunkData = e.target.result;
-    const wordArray = CryptoJS.lib.WordArray.create(chunkData);
-    const encrypted = CryptoJS.AES.encrypt(wordArray, encryptionKey).toString();
-    channel.send(JSON.stringify({ type: 'file-chunk', data: encrypted, offset, total: file.size }));
-    offset += CHUNK_SIZE;
-    if (offset < file.size) readNext();
-    else progressDiv.innerHTML += `<div>✅ File "${file.name}" sent.</div>`;
-    const percent = Math.min(100, Math.round((offset / file.size) * 100));
-    progressDiv.innerHTML = `📤 Sending ${file.name}: ${percent}%`;
-  };
-  function readNext() {
-    const slice = file.slice(offset, offset + CHUNK_SIZE);
-    reader.readAsArrayBuffer(slice);
-  }
-  readNext();
 }
 
 // ------------------------------------------------------------
