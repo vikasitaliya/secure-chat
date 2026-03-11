@@ -1,4 +1,4 @@
-// public/client.js - Quantum Edition
+// public/client.js - Quantum Edition (Fully functional)
 const socket = io('https://secure-chat-jqnr.onrender.com'); // Your live URL
 
 let myUsername = null;
@@ -259,7 +259,7 @@ function appendMessage(text, sender) {
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-// Typing indicator (optional – you'll need to implement socket events)
+// Typing indicator (optional)
 messageInput.addEventListener('input', () => {
   if (!myUsername) return;
   clearTimeout(typingTimeout);
