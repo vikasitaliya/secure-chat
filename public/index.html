@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NEXUS · Secure Chat</title>
+  <title>NEXUS · Quantum Chat</title>
   <style>
     /* ===== RESET & GLOBAL ===== */
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
     }
 
     body {
       min-height: 100vh;
-      background: #0a0a0f;
+      background: #0b0b1f;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -24,8 +24,8 @@
       overflow-x: hidden;
     }
 
-    /* ===== ANIMATED BACKGROUND ===== */
-    #particle-canvas {
+    /* ===== 3D BACKGROUND (Three.js canvas) ===== */
+    #bg-canvas {
       position: fixed;
       top: 0;
       left: 0;
@@ -35,75 +35,58 @@
       pointer-events: none;
     }
 
-    .gradient-bg {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: radial-gradient(circle at 20% 50%, rgba(45, 0, 255, 0.15) 0%, transparent 50%),
-                  radial-gradient(circle at 80% 80%, rgba(255, 0, 200, 0.15) 0%, transparent 50%),
-                  radial-gradient(circle at 30% 80%, rgba(0, 255, 255, 0.1) 0%, transparent 50%);
-      z-index: 0;
-      animation: pulse 10s ease-in-out infinite alternate;
-    }
-
-    @keyframes pulse {
-      0% { opacity: 0.5; transform: scale(1); }
-      100% { opacity: 1; transform: scale(1.05); }
-    }
-
     /* ===== MAIN APP CONTAINER ===== */
     #app {
       position: relative;
       z-index: 10;
       width: 100%;
-      max-width: 1400px;
-      height: 90vh;
-      background: rgba(20, 20, 30, 0.7);
-      backdrop-filter: blur(16px) saturate(180%);
-      -webkit-backdrop-filter: blur(16px) saturate(180%);
-      border-radius: 48px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+      max-width: 1600px;
+      height: 95vh;
+      background: rgba(15, 20, 30, 0.4);
+      backdrop-filter: blur(20px) saturate(200%);
+      -webkit-backdrop-filter: blur(20px) saturate(200%);
+      border-radius: 60px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 40px 80px rgba(0, 0, 0, 0.7), 0 0 0 2px rgba(255, 255, 255, 0.05) inset;
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      transform-style: preserve-3d;
-      transition: transform 0.4s ease, box-shadow 0.4s ease;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
 
     #app:hover {
-      transform: perspective(2000px) rotateX(2deg) rotateY(1deg) translateZ(10px);
-      box-shadow: 0 40px 80px rgba(0, 0, 0, 0.8), 0 0 0 2px rgba(100, 150, 255, 0.3) inset;
+      box-shadow: 0 60px 120px rgba(0, 255, 255, 0.2), 0 0 0 2px rgba(0, 255, 255, 0.2) inset;
     }
 
     /* ===== LOGIN SCREEN ===== */
     #login {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
       padding: 40px;
-      text-align: center;
-      background: rgba(0, 0, 0, 0.3);
-      backdrop-filter: blur(8px);
-      border-radius: 48px 48px 0 0;
-      transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      background: rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(10px);
+      border-radius: 60px 60px 0 0;
+      transition: all 0.5s;
     }
 
     #login h1 {
-      font-size: 4rem;
+      font-size: clamp(2.5rem, 10vw, 5rem);
       font-weight: 800;
-      background: linear-gradient(135deg, #aaffff, #bf7aff);
+      background: linear-gradient(45deg, #ff6ec4, #7873f5, #3bd1d3);
       -webkit-background-clip: text;
-      background-clip: text;
       -webkit-text-fill-color: transparent;
-      text-shadow: 0 0 30px rgba(170, 255, 255, 0.5);
+      filter: drop-shadow(0 0 30px #ff6ec4);
       margin-bottom: 40px;
-      letter-spacing: -0.02em;
-      animation: glowPulse 3s infinite alternate;
+      animation: hueRotate 8s infinite linear;
     }
 
-    @keyframes glowPulse {
-      0% { text-shadow: 0 0 20px rgba(170, 255, 255, 0.3); }
-      100% { text-shadow: 0 0 60px rgba(191, 122, 255, 0.8); }
+    @keyframes hueRotate {
+      0% { filter: hue-rotate(0deg) drop-shadow(0 0 30px #ff6ec4); }
+      50% { filter: hue-rotate(180deg) drop-shadow(0 0 40px #3bd1d3); }
+      100% { filter: hue-rotate(360deg) drop-shadow(0 0 30px #ff6ec4); }
     }
 
     #login input {
@@ -111,27 +94,27 @@
       max-width: 80%;
       padding: 20px 30px;
       font-size: 1.2rem;
-      background: rgba(255, 255, 255, 0.05);
-      border: 2px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid rgba(255, 255, 255, 0.2);
       border-radius: 60px;
       color: white;
       outline: none;
       transition: all 0.3s;
-      backdrop-filter: blur(4px);
+      backdrop-filter: blur(5px);
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
       margin-bottom: 20px;
     }
 
     #login input:focus {
-      border-color: #7aa2ff;
-      box-shadow: 0 0 30px #7aa2ff66;
+      border-color: #ff6ec4;
+      box-shadow: 0 0 40px #ff6ec4;
     }
 
     #login button {
       padding: 20px 50px;
       font-size: 1.3rem;
       font-weight: 600;
-      background: linear-gradient(145deg, #1a1a2e, #16213e);
+      background: linear-gradient(45deg, #ff6ec4, #7873f5);
       border: none;
       border-radius: 60px;
       color: white;
@@ -139,7 +122,7 @@
       position: relative;
       overflow: hidden;
       transition: all 0.3s;
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
     }
 
     #login button::before {
@@ -149,42 +132,43 @@
       left: -100%;
       width: 100%;
       height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
       transition: left 0.7s;
     }
 
     #login button:hover {
       transform: scale(1.05) translateY(-3px);
-      box-shadow: 0 25px 45px rgba(122, 162, 255, 0.4);
+      box-shadow: 0 25px 45px #ff6ec4;
     }
 
     #login button:hover::before {
       left: 100%;
     }
 
-    /* ===== MAIN CHAT LAYOUT ===== */
+    /* ===== MAIN CHAT LAYOUT (GRID) ===== */
     #main {
-      flex: 1; /* Take remaining space after login */
-      display: flex;
-      flex-direction: row;
-      min-height: 0; /* Allow flex child to shrink */
-      overflow: hidden;
+      flex: 1;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      grid-template-rows: 1fr auto;
+      gap: 0;
+      min-height: 0;
       opacity: 0;
       transform: translateY(20px);
       transition: opacity 0.5s ease, transform 0.5s ease;
     }
 
-    #main[style*="display: flex"] {
+    #main[style*="display: grid"] {
       opacity: 1;
       transform: translateY(0);
     }
 
     /* ===== USERS PANEL (LEFT) ===== */
     #users {
-      width: 320px;
-      background: rgba(10, 10, 15, 0.6);
+      grid-row: 1 / -1;
+      background: rgba(10, 10, 20, 0.5);
       backdrop-filter: blur(12px);
-      border-right: 1px solid rgba(255, 255, 255, 0.05);
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
       padding: 25px 15px;
       overflow-y: auto;
       transition: all 0.3s;
@@ -193,12 +177,13 @@
     #users h3 {
       font-size: 1.4rem;
       font-weight: 500;
-      color: #ccc;
+      color: #fff;
       margin-bottom: 25px;
       letter-spacing: 2px;
       text-transform: uppercase;
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       padding-bottom: 15px;
+      text-shadow: 0 0 15px cyan;
     }
 
     #userList {
@@ -208,34 +193,52 @@
     #userList li {
       padding: 15px 20px;
       margin-bottom: 10px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 30px;
-      color: #eee;
+      color: #fff;
       font-weight: 400;
       cursor: pointer;
       transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
-      transform-style: preserve-3d;
       box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
       backdrop-filter: blur(4px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    #userList li::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(255,110,196,0.2) 0%, transparent 70%);
+      opacity: 0;
+      transition: opacity 0.3s;
     }
 
     #userList li:hover {
-      transform: translateY(-3px) translateZ(10px) rotateX(2deg);
-      background: rgba(122, 162, 255, 0.15);
-      border-color: #7aa2ff;
-      box-shadow: 0 15px 30px rgba(122, 162, 255, 0.3);
+      transform: translateY(-3px);
+      background: rgba(120,115,245,0.2);
+      border-color: #7873f5;
+      box-shadow: 0 15px 30px rgba(120,115,245,0.4);
+    }
+
+    #userList li:hover::after {
+      opacity: 1;
     }
 
     /* ===== CHAT AREA (RIGHT) ===== */
     #chat {
-      flex: 1;
+      grid-column: 2;
+      grid-row: 1;
       display: flex;
       flex-direction: column;
       background: rgba(0, 0, 0, 0.2);
       backdrop-filter: blur(8px);
       padding: 25px;
-      min-height: 0; /* Allow flex child to shrink */
+      min-height: 0;
       overflow: hidden;
     }
 
@@ -248,7 +251,7 @@
       flex-direction: column;
       gap: 12px;
       scrollbar-width: thin;
-      scrollbar-color: #7aa2ff #1a1a2a;
+      scrollbar-color: #ff6ec4 #1a1a2a;
     }
 
     #messages::-webkit-scrollbar {
@@ -259,55 +262,80 @@
       border-radius: 10px;
     }
     #messages::-webkit-scrollbar-thumb {
-      background: #7aa2ff;
+      background: linear-gradient(45deg, #ff6ec4, #7873f5);
       border-radius: 10px;
-      box-shadow: 0 0 15px #7aa2ff;
+      box-shadow: 0 0 15px #ff6ec4;
     }
 
-    /* MESSAGE BUBBLES */
+    /* MESSAGE BUBBLES (3D CARDS) */
     .message {
       max-width: 65%;
       padding: 14px 20px;
-      border-radius: 30px;
+      border-radius: 30px 30px 30px 6px;
       word-wrap: break-word;
       position: relative;
       animation: messageAppear 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-      backdrop-filter: blur(4px);
+      box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+      backdrop-filter: blur(8px);
       transform-style: preserve-3d;
-      transition: transform 0.2s;
+      transition: transform 0.2s, box-shadow 0.2s;
     }
 
     .message:hover {
-      transform: translateY(-2px) translateZ(5px);
+      transform: perspective(1000px) rotateX(2deg) rotateY(2deg) translateZ(10px);
+      box-shadow: 0 25px 40px rgba(255, 110, 196, 0.4);
     }
 
     .message.me {
       align-self: flex-end;
-      background: linear-gradient(145deg, #1e3a5f, #0f2b45);
-      border: 1px solid rgba(122, 162, 255, 0.5);
-      border-bottom-right-radius: 6px;
-      box-shadow: 0 5px 20px rgba(122, 162, 255, 0.3);
+      background: linear-gradient(145deg, rgba(255,110,196,0.3), rgba(120,115,245,0.3));
+      border: 1px solid rgba(255,110,196,0.5);
     }
 
     .message.them {
       align-self: flex-start;
-      background: rgba(30, 30, 40, 0.8);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-bottom-left-radius: 6px;
+      background: rgba(30, 30, 50, 0.6);
+      border: 1px solid rgba(255,255,255,0.2);
     }
 
     .timestamp {
       font-size: 0.65rem;
-      color: #aaa;
+      color: rgba(255,255,255,0.6);
       margin-top: 6px;
       text-align: right;
-      letter-spacing: 0.5px;
     }
 
     @keyframes messageAppear {
       0% { opacity: 0; transform: translateY(20px) scale(0.9); }
       100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* TYPING INDICATOR */
+    .typing {
+      display: flex;
+      gap: 4px;
+      padding: 10px 20px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 30px;
+      width: fit-content;
+      margin-bottom: 10px;
+    }
+
+    .typing span {
+      width: 8px;
+      height: 8px;
+      background: #ff6ec4;
+      border-radius: 50%;
+      animation: bounce 1.4s infinite ease-in-out;
+    }
+
+    .typing span:nth-child(1) { animation-delay: 0s; }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-10px); }
     }
 
     /* INPUT AREA */
@@ -321,7 +349,7 @@
       flex: 1;
       padding: 18px 25px;
       background: rgba(20, 20, 30, 0.7);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 50px;
       font-size: 1rem;
       color: white;
@@ -332,15 +360,15 @@
     }
 
     #messageInput:focus {
-      border-color: #7aa2ff;
-      box-shadow: 0 0 30px rgba(122, 162, 255, 0.3);
+      border-color: #ff6ec4;
+      box-shadow: 0 0 30px #ff6ec4;
     }
 
     #sendBtn {
       width: 70px;
       height: 70px;
       border-radius: 50%;
-      background: linear-gradient(145deg, #1e3a5f, #0f2b45);
+      background: linear-gradient(45deg, #ff6ec4, #7873f5);
       border: none;
       color: white;
       font-size: 1.8rem;
@@ -359,21 +387,28 @@
       position: absolute;
       width: 100%;
       height: 100%;
-      background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+      background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, transparent 70%);
       opacity: 0;
       transition: opacity 0.3s;
     }
 
     #sendBtn:hover {
       transform: scale(1.1) rotate(5deg);
-      box-shadow: 0 0 30px #7aa2ff;
+      box-shadow: 0 0 40px #ff6ec4;
     }
 
     #sendBtn:hover::after {
       opacity: 1;
     }
 
-    /* FILE INPUT & PROGRESS */
+    /* FILE SHARING */
+    .file-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
     #fileInput {
       display: none;
     }
@@ -381,18 +416,18 @@
     .file-label {
       padding: 12px 25px;
       background: rgba(255, 255, 255, 0.05);
-      border: 1px dashed rgba(255, 255, 255, 0.2);
+      border: 1px dashed rgba(255, 255, 255, 0.3);
       border-radius: 40px;
       color: #ccc;
       cursor: pointer;
       transition: all 0.3s;
       backdrop-filter: blur(4px);
-      margin-right: 10px;
     }
 
     .file-label:hover {
-      background: rgba(122, 162, 255, 0.1);
-      border-color: #7aa2ff;
+      background: rgba(255,110,196,0.1);
+      border-color: #ff6ec4;
+      box-shadow: 0 0 20px #ff6ec4;
     }
 
     #sendFileBtn {
@@ -407,131 +442,160 @@
     }
 
     #sendFileBtn:hover {
-      background: #1e3a5f;
+      background: #7873f5;
       transform: translateY(-2px);
-      box-shadow: 0 10px 25px #7aa2ff66;
+      box-shadow: 0 10px 25px #7873f5;
     }
 
     #progress {
       margin-top: 15px;
       font-size: 0.9rem;
-      color: #7aa2ff;
+      color: #ff6ec4;
       text-shadow: 0 0 10px currentColor;
     }
 
-    /* BLE & PAYMENTS SECTIONS */
-    #ble-section, #payment-section {
-      margin-top: 25px;
-      padding: 20px;
-      background: rgba(10, 10, 15, 0.6);
+    /* ===== BOTTOM PANEL (BLE & PAYMENTS) ===== */
+    #bottom-panel {
+      grid-column: 2;
+      grid-row: 2;
+      background: rgba(10, 10, 20, 0.5);
       backdrop-filter: blur(12px);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 20px;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .panel-section {
+      background: rgba(0, 0, 0, 0.3);
       border-radius: 32px;
+      padding: 20px;
       border: 1px solid rgba(255, 255, 255, 0.05);
       transition: all 0.3s;
-      max-height: 280px;
-      overflow-y: auto;
     }
 
-    #ble-section:hover, #payment-section:hover {
-      border-color: #7aa2ff44;
-      box-shadow: 0 0 30px #7aa2ff22;
+    .panel-section:hover {
+      border-color: #ff6ec4;
+      box-shadow: 0 0 30px rgba(255,110,196,0.2);
     }
 
-    #ble-section h3, #payment-section h3 {
-      color: #ddd;
+    .panel-section h3 {
+      color: #fff;
       font-weight: 400;
       margin-bottom: 15px;
       text-transform: uppercase;
       letter-spacing: 2px;
+      background: linear-gradient(45deg, #ff6ec4, #7873f5);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
 
-    #nearbyDevices button {
-      margin: 5px;
-      padding: 10px 20px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 30px;
-      color: white;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
-
-    #nearbyDevices button:hover {
-      background: #7aa2ff33;
-      border-color: #7aa2ff;
-    }
-
-    #hyperswitch-payment-element {
-      margin: 15px 0;
+    /* WALLET CARD */
+    .wallet-card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 24px;
       padding: 20px;
-      background: rgba(0, 0, 0, 0.3);
-      border-radius: 30px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      margin-bottom: 20px;
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(4px);
+      transform-style: preserve-3d;
+      transition: transform 0.3s;
     }
 
-    #hyperswitch-pay-button, #hyperswitch-confirm-button {
-      padding: 15px 30px;
-      background: linear-gradient(145deg, #1e3a5f, #0f2b45);
+    .wallet-card:hover {
+      transform: perspective(1000px) rotateX(2deg) rotateY(2deg) translateZ(10px);
+      border-color: #7873f5;
+    }
+
+    .wallet-address {
+      font-family: monospace;
+      font-size: 0.9rem;
+      color: #ff6ec4;
+      word-break: break-all;
+    }
+
+    .balance-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    /* BUTTONS */
+    .btn {
+      padding: 12px 20px;
+      background: linear-gradient(45deg, #ff6ec4, #7873f5);
       border: none;
-      border-radius: 50px;
+      border-radius: 40px;
       color: white;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.3s;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+      margin: 5px;
     }
 
-    #hyperswitch-pay-button:hover, #hyperswitch-confirm-button:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 15px 35px #7aa2ff;
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 15px 30px #ff6ec4;
     }
 
-    #testnet-faucet {
-      margin-top: 20px;
-      padding: 15px;
-      text-align: center;
-      background: rgba(0, 0, 0, 0.2);
-      border-radius: 30px;
-      color: #aaa;
-    }
-
-    #testnet-faucet a {
-      color: #7aa2ff;
-      text-decoration: none;
-      margin: 0 10px;
-      transition: all 0.3s;
-    }
-
-    #testnet-faucet a:hover {
-      text-shadow: 0 0 15px #7aa2ff;
+    .btn-outline {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.3);
     }
 
     /* RESPONSIVE */
     @media (max-width: 900px) {
       #main {
-        flex-direction: column;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
       }
       #users {
-        width: 100%;
+        grid-row: 1;
         border-right: none;
         border-bottom: 1px solid rgba(255,255,255,0.05);
         max-height: 200px;
+      }
+      #chat {
+        grid-column: 1;
+        grid-row: 2;
+      }
+      #bottom-panel {
+        grid-column: 1;
+        grid-row: 3;
+        grid-template-columns: 1fr;
       }
       .message {
         max-width: 85%;
       }
     }
+
+    @media (max-width: 600px) {
+      .file-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .input-area {
+        flex-wrap: wrap;
+      }
+      #sendBtn {
+        width: 100%;
+        border-radius: 50px;
+      }
+    }
   </style>
 </head>
 <body>
-  <!-- Animated particle background -->
-  <canvas id="particle-canvas"></canvas>
-  <div class="gradient-bg"></div>
+  <!-- Three.js canvas for 3D background -->
+  <canvas id="bg-canvas"></canvas>
 
   <div id="app">
     <!-- LOGIN -->
     <div id="login">
-      <h1>NEXUS</h1>
+      <h1>✨ NEXUS ✨</h1>
       <input id="username" placeholder="Enter your identity" />
       <button id="joinBtn">ENTER THE GRID</button>
     </div>
@@ -540,13 +604,18 @@
     <div id="main" style="display: none;">
       <!-- Users Panel -->
       <div id="users">
-        <h3>CONNECTED NODES</h3>
+        <h3>⚡ CONNECTED NODES</h3>
         <ul id="userList"></ul>
       </div>
 
       <!-- Chat Panel -->
       <div id="chat">
         <div id="messages"></div>
+
+        <!-- Typing indicator (hidden by default) -->
+        <div id="typing-indicator" class="typing" style="display: none;">
+          <span></span><span></span><span></span>
+        </div>
 
         <!-- Message Input -->
         <div class="input-area">
@@ -555,62 +624,68 @@
         </div>
 
         <!-- File Sharing -->
-        <div style="display: flex; align-items: center; gap: 10px;">
+        <div class="file-row">
           <label for="fileInput" class="file-label">📎 Attach File</label>
           <input type="file" id="fileInput" />
-          <button id="sendFileBtn">Send File</button>
+          <button id="sendFileBtn" class="btn-outline">Send File</button>
         </div>
         <div id="progress"></div>
+      </div>
 
+      <!-- Bottom Panel (BLE & Payments) -->
+      <div id="bottom-panel">
         <!-- BLE Section -->
-        <div id="ble-section">
+        <div class="panel-section">
           <h3>⚡ OFFLINE MESH</h3>
-          <button id="enableBLEBtn">Enable BLE</button>
-          <button id="disableBLEBtn" disabled>Disable BLE</button>
-          <div id="nearbyDevices"></div>
+          <button id="enableBLEBtn" class="btn">Enable BLE</button>
+          <button id="disableBLEBtn" class="btn-outline" disabled>Disable</button>
+          <div id="nearbyDevices" style="margin-top: 15px;"></div>
         </div>
 
-        <!-- Payment Section -->
-        <div id="payment-section">
-          <h3>💎 PRIVATE PAYMENTS</h3>
-          <div id="wallet-info">
-            <p>Wallet: <span id="wallet-address"></span></p>
-            <p>Network: <span id="network-name">Sepolia</span></p>
+        <!-- Payments Section -->
+        <div class="panel-section">
+          <h3>💎 QUANTUM PAYMENTS</h3>
+          <div class="wallet-card">
+            <div style="display: flex; justify-content: space-between;">
+              <span>Wallet</span>
+              <span class="wallet-address" id="wallet-address"></span>
+            </div>
+            <div style="margin-top: 10px;">Network: <span id="network-name">Sepolia</span></div>
           </div>
 
           <div id="balances">
-            <h4>Balances</h4>
+            <h4 style="color: #fff; margin-bottom: 10px;">Balances</h4>
             <div id="balance-list"></div>
-            <button id="refresh-balances">Refresh</button>
+            <button id="refresh-balances" class="btn-outline" style="margin-top: 10px;">↻ Refresh</button>
           </div>
 
           <!-- USDC Payment -->
-          <div id="payment-actions">
+          <div style="margin-top: 20px;">
             <h4>Send USDC</h4>
-            <select id="token-select">
+            <select id="token-select" style="background:rgba(0,0,0,0.5); color:white; border:1px solid rgba(255,255,255,0.2); border-radius:30px; padding:10px;">
               <option value="usdc">USDC</option>
               <option value="usdt">USDT</option>
               <option value="dai">DAI</option>
             </select>
-            <input id="payment-amount" type="number" step="0.01" placeholder="Amount">
-            <input id="recipient-address" type="text" placeholder="Recipient address">
-            <button id="send-private-payment">Send Private Payment</button>
-            <div id="payment-status"></div>
+            <input id="payment-amount" type="number" step="0.01" placeholder="Amount" style="width:100%; margin:10px 0; padding:12px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:30px; color:white;">
+            <input id="recipient-address" type="text" placeholder="Recipient address" style="width:100%; margin:10px 0; padding:12px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:30px; color:white;">
+            <button id="send-private-payment" class="btn">Send Private Payment</button>
+            <div id="payment-status" style="margin-top:10px; color:#ff6ec4;"></div>
           </div>
 
           <!-- Hyperswitch -->
-          <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+          <hr style="border-color:rgba(255,255,255,0.1); margin:20px 0;">
           <h4>🌍 GLOBAL PAYMENTS</h4>
-          <button id="hyperswitch-pay-button">Pay with Hyperswitch</button>
-          <div id="hyperswitch-payment-element"></div>
+          <button id="hyperswitch-pay-button" class="btn">Pay with Hyperswitch</button>
+          <div id="hyperswitch-payment-element" style="margin:15px 0;"></div>
           <div id="hyperswitch-status"></div>
         </div>
       </div>
     </div>
 
-    <!-- Testnet Faucet -->
-    <div id="testnet-faucet">
-      <p>Testnet tokens: <a href="https://sepolia-faucet.pk910.de/" target="_blank">ETH</a> | <a href="https://faucet.circle.com/" target="_blank">USDC</a></p>
+    <!-- Testnet Faucet (small) -->
+    <div style="text-align: center; padding: 10px; color: rgba(255,255,255,0.4);">
+      Testnet tokens: <a href="https://sepolia-faucet.pk910.de/" target="_blank" style="color:#ff6ec4;">ETH</a> | <a href="https://faucet.circle.com/" target="_blank" style="color:#7873f5;">USDC</a>
     </div>
   </div>
 
@@ -621,60 +696,87 @@
   <script src="lib/hyperswitch.js"></script>
   <script src="client.js" type="module"></script>
 
-  <!-- Particle animation script -->
-  <script>
-    (function() {
-      const canvas = document.getElementById('particle-canvas');
-      const ctx = canvas.getContext('2d');
-      let width, height;
-      let particles = [];
-
-      function initParticles() {
-        width = window.innerWidth;
-        height = window.innerHeight;
-        canvas.width = width;
-        canvas.height = height;
-        particles = [];
-        for (let i = 0; i < 100; i++) {
-          particles.push({
-            x: Math.random() * width,
-            y: Math.random() * height,
-            radius: Math.random() * 2 + 1,
-            speedX: (Math.random() - 0.5) * 0.5,
-            speedY: (Math.random() - 0.5) * 0.5,
-            color: `rgba(122, 162, 255, ${Math.random() * 0.3 + 0.2})`
-          });
-        }
+  <!-- Three.js for 3D background -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.126.0/build/three.module.js"
       }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
 
-      function drawParticles() {
-        ctx.clearRect(0, 0, width, height);
-        particles.forEach(p => {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-          ctx.fillStyle = p.color;
-          ctx.fill();
+    const canvas = document.getElementById('bg-canvas');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
 
-          // move
-          p.x += p.speedX;
-          p.y += p.speedY;
+    // Create floating geometric shapes
+    const geometry = new THREE.IcosahedronGeometry(1, 0);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xff6ec4,
+      emissive: 0x441133,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.3
+    });
+    const shape = new THREE.Mesh(geometry, material);
+    scene.add(shape);
 
-          // wrap around
-          if (p.x < 0) p.x = width;
-          if (p.x > width) p.x = 0;
-          if (p.y < 0) p.y = height;
-          if (p.y > height) p.y = 0;
-        });
-        requestAnimationFrame(drawParticles);
-      }
+    const geometry2 = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
+    const material2 = new THREE.MeshStandardMaterial({
+      color: 0x7873f5,
+      emissive: 0x222255,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.2
+    });
+    const shape2 = new THREE.Mesh(geometry2, material2);
+    shape2.position.x = 2;
+    shape2.position.y = 1;
+    shape2.position.z = -2;
+    scene.add(shape2);
 
-      window.addEventListener('resize', () => {
-        initParticles();
-      });
+    // Add ambient light and point lights
+    const ambientLight = new THREE.AmbientLight(0x404060);
+    scene.add(ambientLight);
+    const light1 = new THREE.PointLight(0xff6ec4, 1, 10);
+    light1.position.set(2, 3, 4);
+    scene.add(light1);
+    const light2 = new THREE.PointLight(0x7873f5, 1, 10);
+    light2.position.set(-3, -1, 2);
+    scene.add(light2);
 
-      initParticles();
-      drawParticles();
-    })();
+    camera.position.z = 5;
+
+    // Mouse interaction
+    let mouseX = 0, mouseY = 0;
+    document.addEventListener('mousemove', (event) => {
+      mouseX = (event.clientX / window.innerWidth - 0.5) * 2;
+      mouseY = (event.clientY / window.innerHeight - 0.5) * 2;
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Rotate shapes based on mouse
+      shape.rotation.x += 0.01 + mouseY * 0.02;
+      shape.rotation.y += 0.01 + mouseX * 0.02;
+      shape2.rotation.x += 0.005;
+      shape2.rotation.y += 0.01;
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
   </script>
 </body>
 </html>
