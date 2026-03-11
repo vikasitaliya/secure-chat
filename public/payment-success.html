@@ -1,15 +1,71 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Payment Successful</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEXUS · Payment Success</title>
   <style>
-    body { font-family: Arial; text-align: center; padding: 50px; }
-    a { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; }
+    body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 20% 30%, #0a0a1f, #020210);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Inter', sans-serif;
+      color: white;
+    }
+    .card {
+      background: rgba(20, 20, 35, 0.7);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 60px;
+      padding: 60px 80px;
+      text-align: center;
+      box-shadow: 0 40px 80px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+      animation: float 6s ease-in-out infinite;
+    }
+    @keyframes float {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(-15px); }
+      100% { transform: translateY(0px); }
+    }
+    h1 {
+      font-size: 4rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #aaffff, #bf7aff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 30px;
+    }
+    p {
+      font-size: 1.3rem;
+      color: #ccc;
+      margin-bottom: 40px;
+    }
+    a {
+      display: inline-block;
+      padding: 18px 50px;
+      background: linear-gradient(145deg, #1e3a5f, #0f2b45);
+      border-radius: 50px;
+      color: white;
+      text-decoration: none;
+      font-weight: 600;
+      transition: all 0.3s;
+      box-shadow: 0 15px 30px rgba(122, 162, 255, 0.3);
+    }
+    a:hover {
+      transform: scale(1.05) translateY(-3px);
+      box-shadow: 0 20px 40px #7aa2ff;
+    }
   </style>
 </head>
 <body>
-  <h1>✅ Payment Successful!</h1>
-  <p>Your payment has been processed. You can close this window and return to the chat.</p>
-  <a href="/">Back to Chat</a>
+  <div class="card">
+    <h1>✅ PAYMENT SUCCESSFUL</h1>
+    <p>Your transaction has been confirmed on the grid.</p>
+    <a href="/">↺ RETURN TO CHAT</a>
+  </div>
 </body>
 </html>
