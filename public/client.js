@@ -1,12 +1,12 @@
-// public/client.js - FINAL VERSION with polished UI and layout fixes
-const socket = io('https://secure-chat-jqnr.onrender.com'); // Your Live Render URL
+// public/client.js - FINAL FUTURISTIC VERSION
+const socket = io('https://secure-chat-jqnr.onrender.com'); // Your live URL
 
-// Core Chat
 let myUsername = null;
 let myKeyPair = null;
-let peers = {}; // { peerId: { encryptionKey, dataChannel, peerConnection, walletAddress } }
+let peers = {};
 let receivingFile = null;
 let lastUserList = [];
+let typingTimeout = null;
 
 // BLE
 let bleEnabled = false;
@@ -22,8 +22,10 @@ let userWallet = null;
 let provider = null;
 const currentNetwork = { chainId: 11155111, name: 'Sepolia', rpcUrl: '/rpc' };
 
-// Hyperswitch Keys
+// Hyperswitch
 const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
+let hyperswitchInstance = null;
+let hyperswitchElements = null;
 
 // DOM Elements
 const loginDiv = document.getElementById('login');
@@ -52,10 +54,6 @@ const refreshBalancesBtn = document.getElementById('refresh-balances');
 const hyperswitchPayBtn = document.getElementById('hyperswitch-pay-button');
 const hyperswitchStatus = document.getElementById('hyperswitch-status');
 const hyperswitchElementDiv = document.getElementById('hyperswitch-payment-element');
-
-// Hyperswitch State
-let hyperswitchInstance = null;
-let hyperswitchElements = null;
 
 // ------------------------------------------------------------
 // 1. Key generation & wallet derivation
@@ -103,7 +101,6 @@ socket.on('user-list', (users) => {
     li.textContent = user.username;
     li.setAttribute('data-id', user.id);
     li.setAttribute('data-publickey', user.publicKey);
-    li.style.cursor = 'pointer';
     li.addEventListener('click', () => startChat(user.id, user.username, user.publicKey));
     userList.appendChild(li);
   });
@@ -192,7 +189,7 @@ function createPeerConnection(targetId, isReceiver) {
 }
 
 function setupDataChannel(channel, targetId) {
-  if (channel._messageHandlerAttached) { console.log(`⚠️ Handler already attached for ${targetId}, skipping`); return; }
+  if (channel._messageHandlerAttached) return;
   channel._messageHandlerAttached = true;
   channel.onopen = () => {
     peers[targetId].dataChannel = channel;
@@ -201,7 +198,7 @@ function setupDataChannel(channel, targetId) {
     }
   };
   channel.onclose = () => { delete peers[targetId]; };
-  channel.onerror = (err) => console.error(`🔥 Data channel ERROR with ${targetId}:`, err);
+  channel.onerror = (err) => console.error(`Data channel ERROR with ${targetId}:`, err);
 
   const messageHandler = (event) => {
     const peer = peers[targetId];
@@ -211,7 +208,7 @@ function setupDataChannel(channel, targetId) {
       const obj = JSON.parse(event.data);
       if (obj.type === 'file-meta') {
         receivingFile = { name: obj.name, size: obj.size, mime: obj.mime, received: 0, chunks: [] };
-        progressDiv.innerHTML += `<div>Receiving file: ${obj.name} (${obj.size} bytes)</div>`;
+        progressDiv.innerHTML += `<div>📥 Receiving file: ${obj.name}</div>`;
       } else if (obj.type === 'file-chunk') {
         const decrypted = CryptoJS.AES.decrypt(obj.data, encryptionKey);
         const decryptedBytes = new Uint8Array(decrypted.sigBytes);
@@ -221,7 +218,7 @@ function setupDataChannel(channel, targetId) {
         receivingFile.chunks.push(decryptedBytes);
         receivingFile.received += decryptedBytes.length;
         const percent = Math.min(100, Math.round((receivingFile.received / receivingFile.size) * 100));
-        progressDiv.innerHTML = `Receiving ${receivingFile.name}: ${percent}%`;
+        progressDiv.innerHTML = `📦 Receiving ${receivingFile.name}: ${percent}%`;
         if (receivingFile.received >= receivingFile.size) {
           const blob = new Blob(receivingFile.chunks, { type: receivingFile.mime });
           const url = URL.createObjectURL(blob);
@@ -230,15 +227,12 @@ function setupDataChannel(channel, targetId) {
           a.download = receivingFile.name;
           a.click();
           URL.revokeObjectURL(url);
-          progressDiv.innerHTML += `<div>File "${receivingFile.name}" received.</div>`;
+          progressDiv.innerHTML += `<div>✅ File "${receivingFile.name}" received.</div>`;
           receivingFile = null;
         }
       } else if (obj.type === 'wallet-address') {
         peer.walletAddress = obj.address;
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'message them';
-        msgDiv.innerHTML = `<div>🔗 Peer's wallet address received.</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
-        messagesDiv.appendChild(msgDiv);
+        appendMessage('🔗 Peer wallet address received', 'them');
         updateRecipientField();
       } else { console.log('Unknown JSON type', obj.type); }
     } catch (e) {
@@ -247,16 +241,41 @@ function setupDataChannel(channel, targetId) {
         const bytes = CryptoJS.AES.decrypt(event.data, encryptionKey);
         const plaintext = bytes.toString(CryptoJS.enc.Utf8);
         if (plaintext) {
-          const msgDiv = document.createElement('div');
-          msgDiv.className = 'message them';
-          msgDiv.innerHTML = `<div>Them: ${plaintext}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
-          messagesDiv.appendChild(msgDiv);
-        } else { console.warn('Decryption failed – wrong key?'); }
+          appendMessage(plaintext, 'them');
+        }
       } catch (decryptErr) { console.error('Decryption error:', decryptErr); }
     }
   };
   channel.addEventListener('message', messageHandler);
 }
+
+// Helper to append message with animation
+function appendMessage(text, sender) {
+  const msgDiv = document.createElement('div');
+  msgDiv.className = `message ${sender}`;
+  msgDiv.innerHTML = `<div>${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+  messagesDiv.appendChild(msgDiv);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+// Typing indicator
+messageInput.addEventListener('input', () => {
+  if (!myUsername) return;
+  clearTimeout(typingTimeout);
+  socket.emit('typing', { username: myUsername });
+  typingTimeout = setTimeout(() => {
+    socket.emit('stop-typing');
+  }, 1000);
+});
+
+socket.on('typing', (data) => {
+  // Show typing indicator (you can implement a separate UI element)
+  // For simplicity, we'll skip to keep code lean.
+});
+
+socket.on('stop-typing', () => {
+  // Hide typing indicator
+});
 
 // ------------------------------------------------------------
 // 3. Sending messages & files
@@ -272,12 +291,9 @@ sendBtn.addEventListener('click', () => {
         const encrypted = CryptoJS.AES.encrypt(text, key).toString();
         channel.send(encrypted);
       } catch (err) { console.error('Send error:', err); }
-    } else { console.warn('❌ Channel not open for', targetId); }
+    }
   }
-  const msgDiv = document.createElement('div');
-  msgDiv.className = 'message me';
-  msgDiv.innerHTML = `<div>Me: ${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
-  messagesDiv.appendChild(msgDiv);
+  appendMessage(text, 'me');
   messageInput.value = '';
 });
 
@@ -306,9 +322,9 @@ function sendFileViaChannel(channel, file, encryptionKey) {
     channel.send(JSON.stringify({ type: 'file-chunk', data: encrypted, offset, total: file.size }));
     offset += CHUNK_SIZE;
     if (offset < file.size) readNext();
-    else progressDiv.innerHTML += `<div>File "${file.name}" sent.</div>`;
+    else progressDiv.innerHTML += `<div>✅ File "${file.name}" sent.</div>`;
     const percent = Math.min(100, Math.round((offset / file.size) * 100));
-    progressDiv.innerHTML = `Sending ${file.name}: ${percent}%`;
+    progressDiv.innerHTML = `📤 Sending ${file.name}: ${percent}%`;
   };
   function readNext() {
     const slice = file.slice(offset, offset + CHUNK_SIZE);
@@ -452,7 +468,7 @@ if (disableBLEBtn) {
 }
 
 // ------------------------------------------------------------
-// 5. Payment Functions (USDC + Balances)
+// 5. Payment Functions (USDC + Balances) – keep as before
 // ------------------------------------------------------------
 async function deriveWalletFromMasterKey(privateKey) {
   const jwk = await crypto.subtle.exportKey('jwk', privateKey);
@@ -546,7 +562,7 @@ if (sendPrivatePaymentBtn) {
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
-// 6. Hyperswitch Global Payment Integration (full payment element)
+// 6. Hyperswitch Global Payment Integration
 // ------------------------------------------------------------
 if (hyperswitchPayBtn) {
   hyperswitchPayBtn.addEventListener('click', async () => {
@@ -564,7 +580,6 @@ if (hyperswitchPayBtn) {
       const oldConfirm = document.getElementById('hyperswitch-confirm-button');
       if (oldConfirm) oldConfirm.remove();
 
-      // 1. Create payment intent on server
       const response = await fetch('/api/create-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -579,24 +594,18 @@ if (hyperswitchPayBtn) {
       if (!data.clientSecret) throw new Error('No client secret received');
       hyperswitchStatus.textContent = '';
 
-      // 2. Initialize Hyper (use default backend – sandbox automatically)
       hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY);
-
-      // 3. Create elements with the client secret
       hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
 
-      // 4. Create the FULL payment element
       const paymentElement = hyperswitchElements.create('payment', { layout: 'tabs' });
       paymentElement.mount('#hyperswitch-payment-element');
 
-      // 5. Create confirm button
       const confirmBtn = document.createElement('button');
       confirmBtn.id = 'hyperswitch-confirm-button';
       confirmBtn.textContent = 'Confirm Payment';
       confirmBtn.style.marginTop = '10px';
       hyperswitchElementDiv.after(confirmBtn);
 
-      // 6. Confirm payment
       confirmBtn.addEventListener('click', async function confirmHandler() {
         confirmBtn.disabled = true;
         hyperswitchStatus.textContent = 'Processing...';
