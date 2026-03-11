@@ -1,5 +1,5 @@
 // public/client.js – FINAL VERSION with all features
-const socket = io('http://localhost:3000');
+const socket = io('https://secure-chat-jqnr.onrender.com');
 
 // ---------- Core Chat ----------
 let myUsername = null;
