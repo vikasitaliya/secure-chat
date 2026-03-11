@@ -1,4 +1,10 @@
-<style>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEXUS · Quantum Chat</title>
+  <style>
     /* ===== RESET & GLOBAL ===== */
     * {
       margin: 0;
@@ -590,3 +596,196 @@
       }
     }
   </style>
+</head>
+<body>
+  <!-- Three.js canvas for 3D background -->
+  <canvas id="bg-canvas"></canvas>
+
+  <div id="app">
+    <!-- LOGIN -->
+    <div id="login">
+      <h1>✨ NEXUS ✨</h1>
+      <input id="username" placeholder="Enter your identity" />
+      <button id="joinBtn">ENTER THE GRID</button>
+    </div>
+
+    <!-- MAIN CHAT -->
+    <div id="main" style="display: none;">
+      <!-- Users Panel -->
+      <div id="users">
+        <h3>⚡ CONNECTED NODES</h3>
+        <ul id="userList"></ul>
+      </div>
+
+      <!-- Chat Panel -->
+      <div id="chat">
+        <div id="messages"></div>
+
+        <!-- Typing indicator (hidden by default) -->
+        <div id="typing-indicator" class="typing" style="display: none;">
+          <span></span><span></span><span></span>
+        </div>
+
+        <!-- Message Input -->
+        <div class="input-area">
+          <input id="messageInput" placeholder="Type your message..." />
+          <button id="sendBtn">➤</button>
+        </div>
+
+        <!-- File Sharing -->
+        <div class="file-row">
+          <label for="fileInput" class="file-label">📎 Attach File</label>
+          <input type="file" id="fileInput" />
+          <button id="sendFileBtn" class="btn-outline">Send File</button>
+        </div>
+        <div id="progress"></div>
+      </div>
+
+      <!-- Bottom Panel (BLE & Payments) -->
+      <div id="bottom-panel">
+        <!-- BLE Section -->
+        <div class="panel-section">
+          <h3>⚡ OFFLINE MESH</h3>
+          <button id="enableBLEBtn" class="btn">Enable BLE</button>
+          <button id="disableBLEBtn" class="btn-outline" disabled>Disable</button>
+          <div id="nearbyDevices" style="margin-top: 15px;"></div>
+        </div>
+
+        <!-- Payments Section -->
+        <div class="panel-section">
+          <h3>💎 QUANTUM PAYMENTS</h3>
+          <div class="wallet-card">
+            <div style="display: flex; justify-content: space-between;">
+              <span>Wallet</span>
+              <span class="wallet-address" id="wallet-address"></span>
+            </div>
+            <div style="margin-top: 10px;">Network: <span id="network-name">Sepolia</span></div>
+          </div>
+
+          <div id="balances">
+            <h4 style="color: #fff; margin-bottom: 10px;">Balances</h4>
+            <div id="balance-list"></div>
+            <button id="refresh-balances" class="btn-outline" style="margin-top: 10px;">↻ Refresh</button>
+          </div>
+
+          <!-- USDC Payment -->
+          <div style="margin-top: 20px;">
+            <h4>Send USDC</h4>
+            <select id="token-select" style="background:rgba(0,0,0,0.5); color:white; border:1px solid rgba(255,255,255,0.2); border-radius:30px; padding:10px;">
+              <option value="usdc">USDC</option>
+              <option value="usdt">USDT</option>
+              <option value="dai">DAI</option>
+            </select>
+            <input id="payment-amount" type="number" step="0.01" placeholder="Amount" style="width:100%; margin:10px 0; padding:12px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:30px; color:white;">
+            <input id="recipient-address" type="text" placeholder="Recipient address" style="width:100%; margin:10px 0; padding:12px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:30px; color:white;">
+            <button id="send-private-payment" class="btn">Send Private Payment</button>
+            <div id="payment-status" style="margin-top:10px; color:#ff6ec4;"></div>
+          </div>
+
+          <!-- Hyperswitch -->
+          <hr style="border-color:rgba(255,255,255,0.1); margin:20px 0;">
+          <h4>🌍 GLOBAL PAYMENTS</h4>
+          <button id="hyperswitch-pay-button" class="btn">Pay with Hyperswitch</button>
+          <div id="hyperswitch-payment-element" style="margin:15px 0;"></div>
+          <div id="hyperswitch-status"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Testnet Faucet (small) -->
+    <div style="text-align: center; padding: 10px; color: rgba(255,255,255,0.4);">
+      Testnet tokens: <a href="https://sepolia-faucet.pk910.de/" target="_blank" style="color:#ff6ec4;">ETH</a> | <a href="https://faucet.circle.com/" target="_blank" style="color:#7873f5;">USDC</a>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="lib/crypto-js.min.js"></script>
+  <script src="lib/ethers.min.js"></script>
+  <script src="lib/hyperswitch.js"></script>
+  <script src="client.js" type="module"></script>
+
+  <!-- Three.js for 3D background -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.126.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    const canvas = document.getElementById('bg-canvas');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+
+    // Create floating geometric shapes
+    const geometry = new THREE.IcosahedronGeometry(1, 0);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xff6ec4,
+      emissive: 0x441133,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.3
+    });
+    const shape = new THREE.Mesh(geometry, material);
+    scene.add(shape);
+
+    const geometry2 = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
+    const material2 = new THREE.MeshStandardMaterial({
+      color: 0x7873f5,
+      emissive: 0x222255,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.2
+    });
+    const shape2 = new THREE.Mesh(geometry2, material2);
+    shape2.position.x = 2;
+    shape2.position.y = 1;
+    shape2.position.z = -2;
+    scene.add(shape2);
+
+    // Add ambient light and point lights
+    const ambientLight = new THREE.AmbientLight(0x404060);
+    scene.add(ambientLight);
+    const light1 = new THREE.PointLight(0xff6ec4, 1, 10);
+    light1.position.set(2, 3, 4);
+    scene.add(light1);
+    const light2 = new THREE.PointLight(0x7873f5, 1, 10);
+    light2.position.set(-3, -1, 2);
+    scene.add(light2);
+
+    camera.position.z = 5;
+
+    // Mouse interaction
+    let mouseX = 0, mouseY = 0;
+    document.addEventListener('mousemove', (event) => {
+      mouseX = (event.clientX / window.innerWidth - 0.5) * 2;
+      mouseY = (event.clientY / window.innerHeight - 0.5) * 2;
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Rotate shapes based on mouse
+      shape.rotation.x += 0.01 + mouseY * 0.02;
+      shape.rotation.y += 0.01 + mouseX * 0.02;
+      shape2.rotation.x += 0.005;
+      shape2.rotation.y += 0.01;
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
