@@ -42,7 +42,7 @@
       width: 100%;
       max-width: 1600px;
       height: 95vh;
-      background: rgba(25, 30, 40, 0.65); /* lighter background */
+      background: rgba(25, 30, 40, 0.65);
       backdrop-filter: blur(20px) saturate(200%);
       -webkit-backdrop-filter: blur(20px) saturate(200%);
       border-radius: 60px;
@@ -187,6 +187,38 @@
       text-shadow: 0 0 10px #ff8acc;
     }
 
+    /* Group list section */
+    #groupList {
+      max-height: 150px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+
+    .group-item {
+      padding: 10px;
+      margin: 5px 0;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 20px;
+      cursor: pointer;
+      color: #fff;
+      transition: all 0.2s;
+    }
+    .group-item:hover {
+      background: rgba(255,138,204,0.2);
+      border-color: #ff8acc;
+    }
+
+    .btn-small {
+      padding: 5px 12px;
+      background: linear-gradient(45deg, #ff8acc, #8a85ff);
+      border: none;
+      border-radius: 30px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
     #userList {
       list-style: none;
     }
@@ -241,6 +273,28 @@
       padding: 25px;
       min-height: 0;
       overflow: hidden;
+    }
+
+    /* Group chat header */
+    #groupChatHeader {
+      display: none;
+      margin-bottom: 10px;
+      padding: 10px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 30px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #currentGroupName {
+      font-weight: bold;
+      color: #ff8acc;
+    }
+    #leaveGroupBtn {
+      background: none;
+      border: none;
+      color: #ff8acc;
+      cursor: pointer;
+      font-size: 1.2rem;
     }
 
     /* MESSAGES CONTAINER */
@@ -623,11 +677,27 @@
       <!-- Users Panel -->
       <div id="users">
         <h3>⚡ CONNECTED NODES</h3>
+
+        <!-- Group list -->
+        <div style="margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h4 style="color: #fff; margin:0;">GROUPS</h4>
+            <button id="createGroupBtn" class="btn-small">➕</button>
+          </div>
+          <div id="groupList"></div>
+        </div>
+
         <ul id="userList"></ul>
       </div>
 
       <!-- Chat Panel -->
       <div id="chat">
+        <!-- Group Chat Header (hidden by default) -->
+        <div id="groupChatHeader">
+          <span id="currentGroupName"></span>
+          <button id="leaveGroupBtn">✖</button>
+        </div>
+
         <div id="messages"></div>
 
         <!-- Typing indicator (hidden by default) -->
