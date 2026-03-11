@@ -1,14 +1,14 @@
-// public/client.js – FINAL VERSION with polished UI
-const socket = io('https://secure-chat-jqnr.onrender.com'); // Your live Render URL
+// public/client.js - FINAL VERSION with polished UI and layout fixes
+const socket = io('https://secure-chat-jqnr.onrender.com'); // Your Live Render URL
 
-// ---------- Core Chat ----------
+// Core Chat
 let myUsername = null;
 let myKeyPair = null;
-let peers = {};               // { peerId: { encryptionKey, dataChannel, peerConnection, walletAddress } }
+let peers = {}; // { peerId: { encryptionKey, dataChannel, peerConnection, walletAddress } }
 let receivingFile = null;
 let lastUserList = [];
 
-// ---------- BLE ----------
+// BLE
 let bleEnabled = false;
 let bleAdvertising = false;
 let bleScanning = false;
@@ -17,15 +17,15 @@ const peerKeys = {};
 const BLE_SERVICE_UUID = '12345678-1234-1234-1234-123456789abc';
 const BLE_CHARACTERISTIC_UUID = 'abcdef01-1234-1234-1234-123456789abc';
 
-// ---------- Payments ----------
+// Payments
 let userWallet = null;
 let provider = null;
 const currentNetwork = { chainId: 11155111, name: 'Sepolia', rpcUrl: '/rpc' };
 
-// ---------- Hyperswitch Keys ----------
+// Hyperswitch Keys
 const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
 
-// ---------- DOM Elements ----------
+// DOM Elements
 const loginDiv = document.getElementById('login');
 const mainDiv = document.getElementById('main');
 const usernameInput = document.getElementById('username');
@@ -53,7 +53,7 @@ const hyperswitchPayBtn = document.getElementById('hyperswitch-pay-button');
 const hyperswitchStatus = document.getElementById('hyperswitch-status');
 const hyperswitchElementDiv = document.getElementById('hyperswitch-payment-element');
 
-// ---------- Hyperswitch State ----------
+// Hyperswitch State
 let hyperswitchInstance = null;
 let hyperswitchElements = null;
 
@@ -280,6 +280,7 @@ sendBtn.addEventListener('click', () => {
   messagesDiv.appendChild(msgDiv);
   messageInput.value = '';
 });
+
 messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
 
 sendFileBtn.addEventListener('click', () => {
@@ -317,7 +318,7 @@ function sendFileViaChannel(channel, file, encryptionKey) {
 }
 
 // ------------------------------------------------------------
-// 4. BLE Functions (full)
+// 4. BLE Functions (unchanged)
 // ------------------------------------------------------------
 async function getBLEPlugin() {
   if (typeof Capacitor === 'undefined' || !Capacitor.isNative) return null;
@@ -329,11 +330,13 @@ async function getBLEPlugin() {
     return null;
   }
 }
+
 async function initBLE() {
   const ble = await getBLEPlugin();
   if (!ble) return false;
   try { await ble.initialize(); return true; } catch (err) { console.error('BLE init error:', err); return false; }
 }
+
 async function startBLEAdvert() {
   const ble = await getBLEPlugin();
   if (!ble || !myUsername || bleAdvertising) return;
@@ -351,11 +354,13 @@ async function startBLEAdvert() {
     bleAdvertising = true;
   } catch (err) { console.error('Start advertising failed:', err); }
 }
+
 async function stopBLEAdvert() {
   const ble = await getBLEPlugin();
   if (!ble || !bleAdvertising) return;
   try { await ble.stopAdvertising(); bleAdvertising = false; } catch (err) { console.error('Stop advertising failed:', err); }
 }
+
 async function startBLEScan() {
   const ble = await getBLEPlugin();
   if (!ble || bleScanning) return;
@@ -365,11 +370,13 @@ async function startBLEScan() {
     ble.addListener('deviceScanned', (device) => addDeviceToList(device));
   } catch (err) { console.error('Start scan failed:', err); }
 }
+
 async function stopBLEScan() {
   const ble = await getBLEPlugin();
   if (!ble || !bleScanning) return;
   try { await ble.stopScan(); bleScanning = false; } catch (err) { console.error('Stop scan failed:', err); }
 }
+
 function addDeviceToList(device) {
   if (!nearbyDevicesDiv) return;
   if (document.getElementById(`device-${device.deviceId}`)) return;
@@ -379,6 +386,7 @@ function addDeviceToList(device) {
   btn.onclick = () => connectToBLEDevice(device.deviceId);
   nearbyDevicesDiv.appendChild(btn);
 }
+
 async function connectToBLEDevice(deviceId) {
   const ble = await getBLEPlugin();
   if (!ble || bleConnectedDeviceId) return;
@@ -399,13 +407,16 @@ async function connectToBLEDevice(deviceId) {
     });
   } catch (err) { console.error('BLE connect error:', err); }
 }
+
 async function disconnectBLEDevice() {
   const ble = await getBLEPlugin();
   if (!ble || !bleConnectedDeviceId) return;
   try { await ble.disconnect({ deviceId: bleConnectedDeviceId }); bleConnectedDeviceId = null; } catch (err) { console.error('Disconnect error:', err); }
 }
+
 function storeKeyForPeer(peerId, key) { peerKeys[peerId] = key; }
 function getKeyForPeer(peerId) { return peerKeys[peerId]; }
+
 function displayBLEChatMessage(peerId, text, sender) {
   const shortId = peerId.substring(0, 6);
   const msgDiv = document.createElement('div');
@@ -413,6 +424,7 @@ function displayBLEChatMessage(peerId, text, sender) {
   msgDiv.innerHTML = `<div>[BLE ${shortId}] ${sender}: ${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
   messagesDiv.appendChild(msgDiv);
 }
+
 if (enableBLEBtn) {
   enableBLEBtn.addEventListener('click', async () => {
     if (!myUsername) { alert('Please join the chat first.'); return; }
@@ -427,6 +439,7 @@ if (enableBLEBtn) {
     bleEnabled = true;
   });
 }
+
 if (disableBLEBtn) {
   disableBLEBtn.addEventListener('click', async () => {
     await stopBLEAdvert();
@@ -451,6 +464,7 @@ async function deriveWalletFromMasterKey(privateKey) {
     .map(b => b.toString(16).padStart(2, '0')).join('');
   return new ethers.Wallet('0x' + privateKeyHex);
 }
+
 function getTokenAddress(token, chainId) {
   if (chainId === 11155111) {
     const addresses = { usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', usdt: '', dai: '' };
@@ -463,10 +477,12 @@ function getTokenAddress(token, chainId) {
   };
   return addresses[token];
 }
+
 function updateRecipientField() {
   const connected = Object.keys(peers).filter(id => peers[id]?.walletAddress);
   if (connected.length > 0) recipientAddressInput.value = peers[connected[0]].walletAddress;
 }
+
 async function refreshBalances() {
   if (!provider || !userWallet || !balanceListDiv) return;
   balanceListDiv.innerHTML = 'Loading balances...';
@@ -497,6 +513,7 @@ async function refreshBalances() {
     balanceListDiv.appendChild(Object.assign(document.createElement('div'), { textContent: `ETH: ${ethFormatted}` }));
   } catch (err) { console.error('Error fetching ETH balance:', err); }
 }
+
 if (sendPrivatePaymentBtn) {
   sendPrivatePaymentBtn.addEventListener('click', async () => {
     const amount = paymentAmountInput.value;
@@ -525,6 +542,7 @@ if (sendPrivatePaymentBtn) {
     }
   });
 }
+
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
 // ------------------------------------------------------------
@@ -546,6 +564,7 @@ if (hyperswitchPayBtn) {
       const oldConfirm = document.getElementById('hyperswitch-confirm-button');
       if (oldConfirm) oldConfirm.remove();
 
+      // 1. Create payment intent on server
       const response = await fetch('/api/create-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -560,18 +579,24 @@ if (hyperswitchPayBtn) {
       if (!data.clientSecret) throw new Error('No client secret received');
       hyperswitchStatus.textContent = '';
 
+      // 2. Initialize Hyper (use default backend – sandbox automatically)
       hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY);
 
+      // 3. Create elements with the client secret
       hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
+
+      // 4. Create the FULL payment element
       const paymentElement = hyperswitchElements.create('payment', { layout: 'tabs' });
       paymentElement.mount('#hyperswitch-payment-element');
 
+      // 5. Create confirm button
       const confirmBtn = document.createElement('button');
       confirmBtn.id = 'hyperswitch-confirm-button';
       confirmBtn.textContent = 'Confirm Payment';
       confirmBtn.style.marginTop = '10px';
       hyperswitchElementDiv.after(confirmBtn);
 
+      // 6. Confirm payment
       confirmBtn.addEventListener('click', async function confirmHandler() {
         confirmBtn.disabled = true;
         hyperswitchStatus.textContent = 'Processing...';
@@ -599,7 +624,6 @@ if (hyperswitchPayBtn) {
           confirmBtn.disabled = false;
         }
       }, { once: true });
-
     } catch (err) {
       console.error('Hyperswitch init error:', err);
       hyperswitchStatus.textContent = '❌ Error: ' + err.message;
