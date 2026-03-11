@@ -19,82 +19,86 @@
   </style>
 </head>
 <body>
-  <h1>Secure Chat + Private Payments (AES-256 Encrypted)</h1>
-  <div id="login">
-    <input id="username" placeholder="Your name" />
-    <button id="joinBtn">Join</button>
-  </div>
-  <div id="users">
-    <h3>Online Users</h3>
-    <ul id="userList"></ul>
-  </div>
-  <div id="chat" style="display:none;">
-    <div id="messages"></div>
-    <input id="messageInput" placeholder="Type a message..." />
-    <button id="sendBtn">Send</button>
-    <br/><br/>
-    <input type="file" id="fileInput" />
-    <button id="sendFileBtn">Send File</button>
-    <div id="progress"></div>
-
-    <!-- BLE Section -->
-    <hr/>
-    <div id="ble-section">
-      <h3>Offline Mesh (Bluetooth)</h3>
-      <button id="enableBLEBtn">Enable BLE Mode</button>
-      <button id="disableBLEBtn" disabled>Disable BLE</button>
-      <div id="nearbyDevices"></div>
+  <div id="app">
+    <div id="login">
+      <h1>Secure Chat + Private Payments</h1>
+      <input id="username" placeholder="Your name" />
+      <button id="joinBtn">Join</button>
     </div>
 
-    <!-- Payment Section -->
-    <hr/>
-    <div id="payment-section">
-      <h3>💰 Private Payments</h3>
-      <div id="wallet-info">
-        <p>Wallet: <span id="wallet-address"></span></p>
-        <p>Network: <span id="network-name">Sepolia (Testnet)</span></p>
+    <div id="main" style="display:none;">
+      <div id="users">
+        <h3>Online Users</h3>
+        <ul id="userList"></ul>
       </div>
+      <div id="chat">
+        <div id="messages"></div>
+        <div class="input-area">
+          <input id="messageInput" placeholder="Type a message..." />
+          <button id="sendBtn">Send</button>
+        </div>
+        <div>
+          <input type="file" id="fileInput" />
+          <button id="sendFileBtn">Send File</button>
+          <div id="progress"></div>
+        </div>
 
-      <div id="balances">
-        <h4>Balances</h4>
-        <div id="balance-list"></div>
-        <button id="refresh-balances">Refresh</button>
-      </div>
+        <!-- BLE Section -->
+        <div id="ble-section">
+          <h3>Offline Mesh (Bluetooth)</h3>
+          <button id="enableBLEBtn">Enable BLE Mode</button>
+          <button id="disableBLEBtn" disabled>Disable BLE</button>
+          <div id="nearbyDevices"></div>
+        </div>
 
-      <!-- USDC Payment -->
-      <div id="payment-actions">
-        <h4>Send Private Payment (USDC)</h4>
-        <select id="token-select">
-          <option value="usdc">USDC</option>
-          <option value="usdt">USDT</option>
-          <option value="dai">DAI</option>
-        </select>
-        <input id="payment-amount" type="number" step="0.01" placeholder="Amount">
-        <input id="recipient-address" type="text" placeholder="Recipient's private address">
-        <button id="send-private-payment">Send Private Payment</button>
-        <div id="payment-status"></div>
-      </div>
+        <!-- Payment Section -->
+        <div id="payment-section">
+          <h3>💰 Private Payments</h3>
+          <div id="wallet-info">
+            <p>Wallet: <span id="wallet-address"></span></p>
+            <p>Network: <span id="network-name">Sepolia (Testnet)</span></p>
+          </div>
+          <div id="balances">
+            <h4>Balances</h4>
+            <div id="balance-list"></div>
+            <button id="refresh-balances">Refresh</button>
+          </div>
 
-      <!-- Hyperswitch Global Payment -->
-      <hr/>
-      <h4>🌐 Global Payments (Hyperswitch)</h4>
-      <button id="hyperswitch-pay-button">Pay with Hyperswitch</button>
-      <div id="hyperswitch-payment-element"></div>
-      <div id="hyperswitch-status"></div>
+          <!-- USDC Payment -->
+          <div id="payment-actions">
+            <h4>Send Private Payment (USDC)</h4>
+            <select id="token-select">
+              <option value="usdc">USDC</option>
+              <option value="usdt">USDT</option>
+              <option value="dai">DAI</option>
+            </select>
+            <input id="payment-amount" type="number" step="0.01" placeholder="Amount">
+            <input id="recipient-address" type="text" placeholder="Recipient's private address">
+            <button id="send-private-payment">Send Private Payment</button>
+            <div id="payment-status"></div>
+          </div>
 
-      <div id="testnet-faucet">
-        <p><strong>Testnet Mode</strong> - Get free test tokens:</p>
-        <a href="https://sepolia-faucet.pk910.de/" target="_blank">Sepolia ETH Faucet</a> | 
-        <a href="https://faucet.circle.com/" target="_blank">USDC Faucet</a>
+          <!-- Hyperswitch Global Payment -->
+          <h4>🌐 Global Payments (Hyperswitch)</h4>
+          <button id="hyperswitch-pay-button">Pay with Hyperswitch</button>
+          <div id="hyperswitch-payment-element"></div>
+          <div id="hyperswitch-status"></div>
+
+          <div id="testnet-faucet">
+            <p><strong>Testnet Mode</strong> - Get free test tokens:</p>
+            <a href="https://sepolia-faucet.pk910.de/" target="_blank">Sepolia ETH Faucet</a> | 
+            <a href="https://faucet.circle.com/" target="_blank">USDC Faucet</a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Scripts – all local -->
+  <!-- Scripts -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="lib/crypto-js.min.js"></script>
   <script src="lib/ethers.min.js"></script>
-  <script src="lib/hyperswitch.js"></script>   <!-- Hyperswitch SDK (local) -->
+  <script src="lib/hyperswitch.js"></script>
   <script src="client.js" type="module"></script>
 </body>
 </html>
