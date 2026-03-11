@@ -1,4 +1,4 @@
-// public/client.js - FINAL FUTURISTIC VERSION
+// public/client.js - Quantum Edition (Fully functional)
 const socket = io('https://secure-chat-jqnr.onrender.com'); // Your live URL
 
 let myUsername = null;
@@ -54,6 +54,7 @@ const refreshBalancesBtn = document.getElementById('refresh-balances');
 const hyperswitchPayBtn = document.getElementById('hyperswitch-pay-button');
 const hyperswitchStatus = document.getElementById('hyperswitch-status');
 const hyperswitchElementDiv = document.getElementById('hyperswitch-payment-element');
+const typingIndicator = document.getElementById('typing-indicator');
 
 // ------------------------------------------------------------
 // 1. Key generation & wallet derivation
@@ -85,7 +86,7 @@ joinBtn.addEventListener('click', async () => {
   socket.emit('join', { username: name, publicKey: publicKeyBase64 });
 
   loginDiv.style.display = 'none';
-  mainDiv.style.display = 'flex';
+  mainDiv.style.display = 'grid';
 });
 
 socket.on('user-list', (users) => {
@@ -258,7 +259,7 @@ function appendMessage(text, sender) {
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-// Typing indicator
+// Typing indicator (optional)
 messageInput.addEventListener('input', () => {
   if (!myUsername) return;
   clearTimeout(typingTimeout);
@@ -269,12 +270,10 @@ messageInput.addEventListener('input', () => {
 });
 
 socket.on('typing', (data) => {
-  // Show typing indicator (you can implement a separate UI element)
-  // For simplicity, we'll skip to keep code lean.
+  if (typingIndicator) typingIndicator.style.display = 'flex';
 });
-
 socket.on('stop-typing', () => {
-  // Hide typing indicator
+  if (typingIndicator) typingIndicator.style.display = 'none';
 });
 
 // ------------------------------------------------------------
@@ -334,7 +333,7 @@ function sendFileViaChannel(channel, file, encryptionKey) {
 }
 
 // ------------------------------------------------------------
-// 4. BLE Functions (unchanged)
+// 4. BLE Functions (unchanged – paste your existing BLE code here)
 // ------------------------------------------------------------
 async function getBLEPlugin() {
   if (typeof Capacitor === 'undefined' || !Capacitor.isNative) return null;
@@ -435,10 +434,7 @@ function getKeyForPeer(peerId) { return peerKeys[peerId]; }
 
 function displayBLEChatMessage(peerId, text, sender) {
   const shortId = peerId.substring(0, 6);
-  const msgDiv = document.createElement('div');
-  msgDiv.className = 'message them';
-  msgDiv.innerHTML = `<div>[BLE ${shortId}] ${sender}: ${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
-  messagesDiv.appendChild(msgDiv);
+  appendMessage(`[BLE ${shortId}] ${sender}: ${text}`, 'them');
 }
 
 if (enableBLEBtn) {
@@ -468,7 +464,7 @@ if (disableBLEBtn) {
 }
 
 // ------------------------------------------------------------
-// 5. Payment Functions (USDC + Balances) – keep as before
+// 5. Payment Functions (USDC + Balances)
 // ------------------------------------------------------------
 async function deriveWalletFromMasterKey(privateKey) {
   const jwk = await crypto.subtle.exportKey('jwk', privateKey);
@@ -501,7 +497,7 @@ function updateRecipientField() {
 
 async function refreshBalances() {
   if (!provider || !userWallet || !balanceListDiv) return;
-  balanceListDiv.innerHTML = 'Loading balances...';
+  balanceListDiv.innerHTML = '';
   const tokens = [
     { symbol: 'USDC', address: getTokenAddress('usdc', currentNetwork.chainId) },
     { symbol: 'USDT', address: getTokenAddress('usdt', currentNetwork.chainId) },
@@ -518,15 +514,24 @@ async function refreshBalances() {
       const balance = await tokenContract.balanceOf(userWallet.address);
       const decimals = await tokenContract.decimals();
       const formatted = ethers.utils.formatUnits(balance, decimals);
-      balanceListDiv.appendChild(Object.assign(document.createElement('div'), { textContent: `${token.symbol}: ${formatted}` }));
+      const div = document.createElement('div');
+      div.className = 'balance-item';
+      div.innerHTML = `<span>${token.symbol}</span><span>${formatted}</span>`;
+      balanceListDiv.appendChild(div);
     } catch (err) {
-      balanceListDiv.appendChild(Object.assign(document.createElement('div'), { textContent: `${token.symbol}: Error` }));
+      const div = document.createElement('div');
+      div.className = 'balance-item';
+      div.innerHTML = `<span>${token.symbol}</span><span>Error</span>`;
+      balanceListDiv.appendChild(div);
     }
   }
   try {
     const ethBalance = await provider.getBalance(userWallet.address);
     const ethFormatted = ethers.utils.formatEther(ethBalance);
-    balanceListDiv.appendChild(Object.assign(document.createElement('div'), { textContent: `ETH: ${ethFormatted}` }));
+    const div = document.createElement('div');
+    div.className = 'balance-item';
+    div.innerHTML = `<span>ETH</span><span>${ethFormatted}</span>`;
+    balanceListDiv.appendChild(div);
   } catch (err) { console.error('Error fetching ETH balance:', err); }
 }
 
