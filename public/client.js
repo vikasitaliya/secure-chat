@@ -108,7 +108,7 @@ function renderGroupList() {
     const div = document.createElement('div');
     div.className = 'group-item';
     div.textContent = group.name;
-    div.setAttribute('data-group-id', groupId); // for debugging
+    div.setAttribute('data-group-id', groupId);
     div.addEventListener('click', () => openGroupChat(groupId));
     groupListDiv.appendChild(div);
   });
@@ -120,7 +120,7 @@ function openGroupChat(groupId) {
   const group = groups[groupId];
   if (!group) return;
   currentGroupNameSpan.textContent = group.name;
-  groupChatHeader.classList.remove('hidden'); // ensure header is visible
+  groupChatHeader.classList.remove('hidden');
   messagesDiv.innerHTML = '';
   group.messages.forEach(msg => {
     appendMessage(msg.text, msg.sender === myUsername ? 'me' : 'them', true);
@@ -508,6 +508,8 @@ sendBtn.onclick = () => {
     const encrypted = CryptoJS.AES.encrypt(text, group.key).toString();
     const groupMsg = { type: 'group-text', groupId: currentGroupId, data: encrypted };
     group.members.forEach(memberId => {
+      // Don't send to self
+      if (memberId === socket.id) return;
       const peer = peers[memberId];
       if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
         peer.dataChannel.send(JSON.stringify(groupMsg));
@@ -600,12 +602,14 @@ if (createGroupConfirm) {
       return;
     }
     const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+    // Include creator in members list
+    const allMembers = [socket.id, ...selectedIds];
     const groupId = 'group_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const groupKey = CryptoJS.lib.WordArray.random(32).toString();
 
     groups[groupId] = {
       name: groupName,
-      members: selectedIds,
+      members: allMembers,
       key: groupKey,
       messages: []
     };
@@ -618,7 +622,7 @@ if (createGroupConfirm) {
         groupId,
         groupName,
         key: groupKey,
-        members: selectedIds
+        members: allMembers
       };
       if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
         peer.dataChannel.send(JSON.stringify(invite));
