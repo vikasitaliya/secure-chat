@@ -108,17 +108,19 @@ function renderGroupList() {
     const div = document.createElement('div');
     div.className = 'group-item';
     div.textContent = group.name;
+    div.setAttribute('data-group-id', groupId); // for debugging
     div.addEventListener('click', () => openGroupChat(groupId));
     groupListDiv.appendChild(div);
   });
 }
 
 function openGroupChat(groupId) {
+  console.log('Opening group chat:', groupId);
   currentGroupId = groupId;
   const group = groups[groupId];
   if (!group) return;
   currentGroupNameSpan.textContent = group.name;
-  groupChatHeader.classList.remove('hidden');
+  groupChatHeader.classList.remove('hidden'); // ensure header is visible
   messagesDiv.innerHTML = '';
   group.messages.forEach(msg => {
     appendMessage(msg.text, msg.sender === myUsername ? 'me' : 'them', true);
@@ -607,6 +609,7 @@ if (createGroupConfirm) {
       key: groupKey,
       messages: []
     };
+    console.log('Group created:', groups[groupId]);
 
     selectedIds.forEach(targetId => {
       const peer = peers[targetId];
