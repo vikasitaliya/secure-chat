@@ -1,5 +1,5 @@
 // ==================== CONFIGURATION ====================
-const socket = io(window.location.origin); // works locally and on Render
+const socket = io(window.location.origin);
 
 // ==================== STATE ====================
 let myUsername = null;
@@ -72,18 +72,11 @@ const createGroupConfirm = document.getElementById('createGroupConfirm');
 const cancelGroupModal = document.getElementById('cancelGroupModal');
 
 // ==================== HELPER FUNCTIONS ====================
-
 async function importPublicKey(base64Key) {
   const binary = atob(base64Key);
   const buffer = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) buffer[i] = binary.charCodeAt(i);
-  return await crypto.subtle.importKey(
-    'raw',
-    buffer,
-    { name: 'ECDH', namedCurve: 'P-256' },
-    true,
-    []
-  );
+  return await crypto.subtle.importKey('raw', buffer, { name: 'ECDH', namedCurve: 'P-256' }, true, []);
 }
 
 function appendMessage(text, sender, isGroup = false) {
@@ -125,7 +118,7 @@ function openGroupChat(groupId) {
   const group = groups[groupId];
   if (!group) return;
   currentGroupNameSpan.textContent = group.name;
-  groupChatHeader.style.display = 'flex';
+  groupChatHeader.classList.remove('hidden');
   messagesDiv.innerHTML = '';
   group.messages.forEach(msg => {
     appendMessage(msg.text, msg.sender === myUsername ? 'me' : 'them', true);
@@ -163,13 +156,11 @@ function setupDataChannel(channel, targetId) {
     try {
       const obj = JSON.parse(event.data);
 
-      // Group invite
       if (obj.type === 'group-invite') {
         handleGroupInvite(obj);
         return;
       }
 
-      // Group text message
       if (obj.type === 'group-text') {
         const group = groups[obj.groupId];
         if (group) {
@@ -187,13 +178,7 @@ function setupDataChannel(channel, targetId) {
 
       // File transfer
       if (obj.type === 'file-meta') {
-        receivingFile = {
-          name: obj.name,
-          size: obj.size,
-          mime: obj.mime,
-          received: 0,
-          chunks: []
-        };
+        receivingFile = { name: obj.name, size: obj.size, mime: obj.mime, received: 0, chunks: [] };
         progressDiv.innerHTML += `<div>📥 Receiving file: ${obj.name}</div>`;
         return;
       }
@@ -222,7 +207,6 @@ function setupDataChannel(channel, targetId) {
         return;
       }
 
-      // Wallet address exchange
       if (obj.type === 'wallet-address') {
         peer.walletAddress = obj.address;
         appendMessage('🔗 Peer wallet address received', 'them', false);
@@ -291,7 +275,7 @@ async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
       dataChannel: null,
       peerConnection: null,
       walletAddress: null,
-      pendingInvites: [] // queue for group invites
+      pendingInvites: []
     };
     const peer = createPeerConnection(targetId, false);
     const offer = await peer.createOffer();
@@ -303,7 +287,6 @@ async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
 }
 
 // ==================== BLE FUNCTIONS ====================
-
 async function getBLEPlugin() {
   if (typeof Capacitor === 'undefined' || !Capacitor.isNative) return null;
   try {
@@ -313,12 +296,6 @@ async function getBLEPlugin() {
     console.error('Failed to load BLE plugin:', err);
     return null;
   }
-}
-
-async function initBLE() {
-  const ble = await getBLEPlugin();
-  if (!ble) return false;
-  try { await ble.initialize(); return true; } catch (err) { console.error('BLE init error:', err); return false; }
 }
 
 async function startBLEAdvert() {
@@ -434,8 +411,12 @@ joinBtn.addEventListener('click', async () => {
   const publicKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
   socket.emit('join', { username: name, publicKey: publicKeyBase64 });
 
-  loginDiv.style.display = 'none';
-  mainDiv.style.display = 'grid';
+  // Animated transition
+  loginDiv.classList.add('hidden');
+  setTimeout(() => {
+    loginDiv.style.display = 'none';
+    mainDiv.classList.remove('hidden');
+  }, 500); // match CSS transition duration
 });
 
 socket.on('user-list', (users) => {
@@ -459,7 +440,6 @@ socket.on('user-list', (users) => {
 socket.on('signal', async (data) => {
   const { from, signal } = data;
   if (!peers[from]) {
-    // Create peer entry on incoming signal
     let userInfo = lastUserList.find(u => u.id === from);
     let retries = 0;
     while (!userInfo && retries < 10) {
@@ -514,13 +494,13 @@ messageInput.addEventListener('input', () => {
 });
 
 socket.on('typing', (data) => {
-  if (typingIndicator) typingIndicator.style.display = 'flex';
+  typingIndicator.classList.remove('hidden');
 });
 socket.on('stop-typing', () => {
-  if (typingIndicator) typingIndicator.style.display = 'none';
+  typingIndicator.classList.add('hidden');
 });
 
-// Send message (handles both one‑to‑one and group)
+// Send message
 sendBtn.onclick = () => {
   const text = messageInput.value.trim();
   if (!text) return;
@@ -539,7 +519,6 @@ sendBtn.onclick = () => {
     group.messages.push({ text, sender: myUsername, timestamp: Date.now() });
     appendMessage(text, 'me', true);
   } else {
-    // One‑to‑one
     for (let targetId in peers) {
       const channel = peers[targetId].dataChannel;
       const key = peers[targetId].encryptionKey;
@@ -590,7 +569,7 @@ function sendFileViaChannel(channel, file, encryptionKey) {
   readNext();
 }
 
-// ==================== GROUP MODAL LOGIC ====================
+// ==================== GROUP MODAL ====================
 if (createGroupBtn) {
   createGroupBtn.addEventListener('click', () => {
     const others = lastUserList.filter(u => u.id !== socket.id);
@@ -601,14 +580,14 @@ if (createGroupBtn) {
     let html = '';
     others.forEach(user => {
       html += `
-        <label style="display: flex; align-items: center;">
+        <label>
           <input type="checkbox" value="${user.id}" data-username="${user.username}">
           <span>${user.username}</span>
         </label>
       `;
     });
     modalUserList.innerHTML = html;
-    groupModal.style.display = 'flex';
+    groupModal.classList.remove('hidden');
   });
 }
 
@@ -635,7 +614,6 @@ if (createGroupConfirm) {
       messages: []
     };
 
-    // Send invites to all members (queue if channel not open)
     selectedIds.forEach(targetId => {
       const peer = peers[targetId];
       const invite = {
@@ -648,33 +626,28 @@ if (createGroupConfirm) {
       if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
         peer.dataChannel.send(JSON.stringify(invite));
       } else if (peer) {
-        // Queue the invite
         if (!peer.pendingInvites) peer.pendingInvites = [];
         peer.pendingInvites.push(invite);
-      } else {
-        console.warn(`Peer ${targetId} not connected, invite not sent`);
-        // Could store globally and retry later, but for simplicity we skip.
       }
     });
 
     renderGroupList();
     openGroupChat(groupId);
-    groupModal.style.display = 'none';
+    groupModal.classList.add('hidden');
     groupNameInput.value = '';
   });
 }
 
 if (cancelGroupModal) {
   cancelGroupModal.addEventListener('click', () => {
-    groupModal.style.display = 'none';
+    groupModal.classList.add('hidden');
     groupNameInput.value = '';
   });
 }
 
-// Close modal when clicking outside
 window.addEventListener('click', (e) => {
   if (e.target === groupModal) {
-    groupModal.style.display = 'none';
+    groupModal.classList.add('hidden');
     groupNameInput.value = '';
   }
 });
@@ -682,7 +655,7 @@ window.addEventListener('click', (e) => {
 if (leaveGroupBtn) {
   leaveGroupBtn.addEventListener('click', () => {
     currentGroupId = null;
-    groupChatHeader.style.display = 'none';
+    groupChatHeader.classList.add('hidden');
     messagesDiv.innerHTML = '';
   });
 }
@@ -735,7 +708,6 @@ function getTokenAddress(token, chainId) {
     };
     return addresses[token];
   }
-  // Mainnet addresses (fallback)
   const addresses = {
     usdc: '0x07865c6E87B9F70255377e024ace6630C1Eaa37F',
     usdt: '0x7D4CcE7fB4cDBb702F134e284FfDC8D80B0BF720',
