@@ -1,11 +1,10 @@
 // ==================== CONFIGURATION ====================
-const SOCKET_URL = 'https://secure-chat-jqnr.onrender.com'; // Your live URL
-const socket = io(SOCKET_URL);
+const socket = io(window.location.origin); // works locally and on Render
 
 // ==================== STATE ====================
 let myUsername = null;
 let myKeyPair = null;
-let peers = {};               // { peerId: { encryptionKey, dataChannel, peerConnection, walletAddress } }
+let peers = {};               // { peerId: { encryptionKey, dataChannel, peerConnection, walletAddress, pendingInvites } }
 let groups = {};              // { groupId: { name, members, key, messages } }
 let currentGroupId = null;    // currently open group
 let receivingFile = null;
@@ -72,7 +71,7 @@ const groupNameInput = document.getElementById('groupNameInput');
 const createGroupConfirm = document.getElementById('createGroupConfirm');
 const cancelGroupModal = document.getElementById('cancelGroupModal');
 
-// ==================== HELPER FUNCTIONS (hoisted) ====================
+// ==================== HELPER FUNCTIONS ====================
 
 async function importPublicKey(base64Key) {
   const binary = atob(base64Key);
@@ -138,7 +137,15 @@ function setupDataChannel(channel, targetId) {
   channel._messageHandlerAttached = true;
 
   channel.onopen = () => {
+    console.log(`Data channel opened with ${targetId}`);
     peers[targetId].dataChannel = channel;
+    // Send any pending group invites
+    if (peers[targetId].pendingInvites && peers[targetId].pendingInvites.length) {
+      peers[targetId].pendingInvites.forEach(invite => {
+        channel.send(JSON.stringify(invite));
+      });
+      peers[targetId].pendingInvites = [];
+    }
     if (userWallet) {
       channel.send(JSON.stringify({ type: 'wallet-address', address: userWallet.address }));
     }
@@ -283,7 +290,8 @@ async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
       encryptionKey: sharedSecretBase64,
       dataChannel: null,
       peerConnection: null,
-      walletAddress: null
+      walletAddress: null,
+      pendingInvites: [] // queue for group invites
     };
     const peer = createPeerConnection(targetId, false);
     const offer = await peer.createOffer();
@@ -471,7 +479,8 @@ socket.on('signal', async (data) => {
         encryptionKey: sharedSecretBase64,
         dataChannel: null,
         peerConnection: null,
-        walletAddress: null
+        walletAddress: null,
+        pendingInvites: []
       };
       createPeerConnection(from, true);
     } else {
@@ -626,18 +635,25 @@ if (createGroupConfirm) {
       messages: []
     };
 
-    // Send invites to all members
+    // Send invites to all members (queue if channel not open)
     selectedIds.forEach(targetId => {
       const peer = peers[targetId];
+      const invite = {
+        type: 'group-invite',
+        groupId,
+        groupName,
+        key: groupKey,
+        members: selectedIds
+      };
       if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
-        const invite = {
-          type: 'group-invite',
-          groupId,
-          groupName,
-          key: groupKey,
-          members: selectedIds
-        };
         peer.dataChannel.send(JSON.stringify(invite));
+      } else if (peer) {
+        // Queue the invite
+        if (!peer.pendingInvites) peer.pendingInvites = [];
+        peer.pendingInvites.push(invite);
+      } else {
+        console.warn(`Peer ${targetId} not connected, invite not sent`);
+        // Could store globally and retry later, but for simplicity we skip.
       }
     });
 
@@ -832,7 +848,10 @@ if (hyperswitchPayBtn) {
         })
       });
       const data = await response.json();
-      if (!data.clientSecret) throw new Error('No client secret received');
+      if (!data.clientSecret) {
+        console.error('Server response:', data);
+        throw new Error('No client secret received');
+      }
       hyperswitchStatus.textContent = '';
 
       hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY);
