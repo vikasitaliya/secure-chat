@@ -1,11 +1,13 @@
-// public/client.js - FINAL VERSION with group chats & connection fix
-const socket = io('https://secure-chat-jqnr.onrender.com'); // Your live URL
+// ==================== CONFIGURATION ====================
+const SOCKET_URL = 'https://secure-chat-jqnr.onrender.com'; // Your live URL
+const socket = io(SOCKET_URL);
 
+// ==================== STATE ====================
 let myUsername = null;
 let myKeyPair = null;
-let peers = {};               // one‑on‑one connections
+let peers = {};               // { peerId: { encryptionKey, dataChannel, peerConnection, walletAddress } }
 let groups = {};              // { groupId: { name, members, key, messages } }
-let currentGroupId = null;    // which group is currently open
+let currentGroupId = null;    // currently open group
 let receivingFile = null;
 let lastUserList = [];
 let typingTimeout = null;
@@ -29,7 +31,7 @@ const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
 let hyperswitchInstance = null;
 let hyperswitchElements = null;
 
-// DOM Elements
+// ==================== DOM ELEMENTS ====================
 const loginDiv = document.getElementById('login');
 const mainDiv = document.getElementById('main');
 const usernameInput = document.getElementById('username');
@@ -64,15 +66,25 @@ const groupListDiv = document.getElementById('groupList');
 const groupChatHeader = document.getElementById('groupChatHeader');
 const currentGroupNameSpan = document.getElementById('currentGroupName');
 const leaveGroupBtn = document.getElementById('leaveGroupBtn');
+const groupModal = document.getElementById('groupModal');
+const modalUserList = document.getElementById('modalUserList');
+const groupNameInput = document.getElementById('groupNameInput');
+const createGroupConfirm = document.getElementById('createGroupConfirm');
+const cancelGroupModal = document.getElementById('cancelGroupModal');
 
-// ========== FUNCTION DEFINITIONS (hoisted) ==========
+// ==================== HELPER FUNCTIONS (hoisted) ====================
 
 async function importPublicKey(base64Key) {
-  console.log('Importing public key');
   const binary = atob(base64Key);
   const buffer = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) buffer[i] = binary.charCodeAt(i);
-  return await crypto.subtle.importKey("raw", buffer, { name: "ECDH", namedCurve: "P-256" }, true, []);
+  return await crypto.subtle.importKey(
+    'raw',
+    buffer,
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    []
+  );
 }
 
 function appendMessage(text, sender, isGroup = false) {
@@ -122,35 +134,35 @@ function openGroupChat(groupId) {
 }
 
 function setupDataChannel(channel, targetId) {
-  console.log(`Setting up data channel for ${targetId}`);
   if (channel._messageHandlerAttached) return;
   channel._messageHandlerAttached = true;
 
   channel.onopen = () => {
-    console.log(`Data channel opened with ${targetId}`);
     peers[targetId].dataChannel = channel;
     if (userWallet) {
       channel.send(JSON.stringify({ type: 'wallet-address', address: userWallet.address }));
     }
   };
   channel.onclose = () => {
-    console.log(`Data channel closed with ${targetId}`);
     delete peers[targetId];
   };
-  channel.onerror = (err) => console.error(`Data channel ERROR with ${targetId}:`, err);
+  channel.onerror = (err) => console.error(`Data channel error with ${targetId}:`, err);
 
   const messageHandler = (event) => {
     const peer = peers[targetId];
     if (!peer) return;
     const encryptionKey = peer.encryptionKey;
-    console.log(`Message from ${targetId}`, event.data.substring(0, 50));
 
     try {
       const obj = JSON.parse(event.data);
+
+      // Group invite
       if (obj.type === 'group-invite') {
         handleGroupInvite(obj);
         return;
       }
+
+      // Group text message
       if (obj.type === 'group-text') {
         const group = groups[obj.groupId];
         if (group) {
@@ -165,11 +177,20 @@ function setupDataChannel(channel, targetId) {
         }
         return;
       }
+
+      // File transfer
       if (obj.type === 'file-meta') {
-        receivingFile = { name: obj.name, size: obj.size, mime: obj.mime, received: 0, chunks: [] };
+        receivingFile = {
+          name: obj.name,
+          size: obj.size,
+          mime: obj.mime,
+          received: 0,
+          chunks: []
+        };
         progressDiv.innerHTML += `<div>📥 Receiving file: ${obj.name}</div>`;
         return;
       }
+
       if (obj.type === 'file-chunk') {
         const decrypted = CryptoJS.AES.decrypt(obj.data, encryptionKey);
         const decryptedBytes = new Uint8Array(decrypted.sigBytes);
@@ -193,6 +214,8 @@ function setupDataChannel(channel, targetId) {
         }
         return;
       }
+
+      // Wallet address exchange
       if (obj.type === 'wallet-address') {
         peer.walletAddress = obj.address;
         appendMessage('🔗 Peer wallet address received', 'them', false);
@@ -200,7 +223,7 @@ function setupDataChannel(channel, targetId) {
         return;
       }
     } catch (e) {
-      // Not JSON – treat as encrypted one‑on‑one text
+      // Not JSON – assume encrypted one‑on‑one text
       try {
         const bytes = CryptoJS.AES.decrypt(event.data, encryptionKey);
         const plaintext = bytes.toString(CryptoJS.enc.Utf8);
@@ -216,7 +239,6 @@ function setupDataChannel(channel, targetId) {
 }
 
 function createPeerConnection(targetId, isReceiver) {
-  console.log(`Creating peer connection for ${targetId}, isReceiver=${isReceiver}`);
   const config = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -227,399 +249,53 @@ function createPeerConnection(targetId, isReceiver) {
   const peer = new RTCPeerConnection(config);
   peer.onicecandidate = (event) => {
     if (event.candidate) {
-      console.log('ICE candidate generated');
       socket.emit('signal', { to: targetId, signal: event.candidate });
     }
   };
   peer.oniceconnectionstatechange = () => {
     console.log('ICE connection state:', peer.iceConnectionState);
   };
-  peer.onsignalingstatechange = () => {
-    console.log('Signaling state:', peer.signalingState);
-  };
 
   if (!isReceiver) {
-    console.log('Creating data channel as initiator');
     const channel = peer.createDataChannel('chat');
     setupDataChannel(channel, targetId);
   } else {
-    peer.ondatachannel = (event) => {
-      console.log('Data channel received');
-      setupDataChannel(event.channel, targetId);
-    };
+    peer.ondatachannel = (event) => setupDataChannel(event.channel, targetId);
   }
   peers[targetId].peerConnection = peer;
   return peer;
 }
 
 async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
-  console.log(`startChat called for ${targetUsername} (${targetId})`);
-  if (peers[targetId]) { alert(`Already connected to ${targetUsername}`); return; }
+  if (peers[targetId]) {
+    alert(`Already connected to ${targetUsername}`);
+    return;
+  }
   try {
     const targetPublicKey = await importPublicKey(targetPublicKeyBase64);
     const sharedSecretBits = await crypto.subtle.deriveBits(
-      { name: "ECDH", public: targetPublicKey }, myKeyPair.privateKey, 256
+      { name: 'ECDH', public: targetPublicKey },
+      myKeyPair.privateKey,
+      256
     );
     const sharedSecretBase64 = btoa(String.fromCharCode(...new Uint8Array(sharedSecretBits)));
-    peers[targetId] = { encryptionKey: sharedSecretBase64, dataChannel: null, peerConnection: null, walletAddress: null };
-    console.log('Shared secret derived for', targetId);
-
+    peers[targetId] = {
+      encryptionKey: sharedSecretBase64,
+      dataChannel: null,
+      peerConnection: null,
+      walletAddress: null
+    };
     const peer = createPeerConnection(targetId, false);
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
-    console.log('Offer created, sending signal');
     socket.emit('signal', { to: targetId, signal: offer });
   } catch (err) {
     console.error('Error in startChat:', err);
   }
 }
 
-// ========== EVENT LISTENERS ==========
+// ==================== BLE FUNCTIONS ====================
 
-joinBtn.addEventListener('click', async () => {
-  const name = usernameInput.value.trim();
-  if (!name) return;
-  myUsername = name;
-  console.log('Joining as', myUsername);
-
-  myKeyPair = await crypto.subtle.generateKey(
-    { name: "ECDH", namedCurve: "P-256" },
-    true,
-    ["deriveKey", "deriveBits"]
-  );
-  console.log('ECDH key pair generated');
-
-  try {
-    userWallet = await deriveWalletFromMasterKey(myKeyPair.privateKey);
-    walletAddressSpan.textContent = userWallet.address;
-    networkNameSpan.textContent = currentNetwork.name;
-    provider = new ethers.providers.JsonRpcProvider(currentNetwork.rpcUrl);
-    await refreshBalances();
-  } catch (err) {
-    console.error('Wallet derivation failed:', err);
-    walletAddressSpan.textContent = 'Error';
-  }
-
-  const publicKeyBuffer = await crypto.subtle.exportKey("raw", myKeyPair.publicKey);
-  const publicKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
-  socket.emit('join', { username: name, publicKey: publicKeyBase64 });
-  console.log('Join event emitted');
-
-  loginDiv.style.display = 'none';
-  mainDiv.style.display = 'grid';
-});
-
-socket.on('user-list', (users) => {
-  console.log('User list received', users);
-  lastUserList = users;
-  const others = users.filter(u => u.id !== socket.id);
-  userList.innerHTML = '';
-  if (others.length === 0) {
-    userList.innerHTML = '<li>No other users online</li>';
-    return;
-  }
-  others.forEach(user => {
-    const li = document.createElement('li');
-    li.textContent = user.username;
-    li.setAttribute('data-id', user.id);
-    li.setAttribute('data-publickey', user.publicKey);
-    li.addEventListener('click', () => startChat(user.id, user.username, user.publicKey));
-    userList.appendChild(li);
-  });
-});
-
-socket.on('signal', async (data) => {
-  console.log('Signal received', data);
-  const { from, signal } = data;
-  if (!peers[from]) {
-    console.log('No peer entry for', from, 'attempting to create from user list');
-    let userInfo = lastUserList.find(u => u.id === from);
-    let retries = 0;
-    while (!userInfo && retries < 10) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-      userInfo = lastUserList.find(u => u.id === from);
-      retries++;
-    }
-    if (userInfo && userInfo.publicKey) {
-      const targetPublicKey = await importPublicKey(userInfo.publicKey);
-      const sharedSecretBits = await crypto.subtle.deriveBits(
-        { name: "ECDH", public: targetPublicKey }, myKeyPair.privateKey, 256
-      );
-      const sharedSecretBase64 = btoa(String.fromCharCode(...new Uint8Array(sharedSecretBits)));
-      peers[from] = { encryptionKey: sharedSecretBase64, dataChannel: null, peerConnection: null, walletAddress: null };
-      console.log('Created peer entry for', from);
-      createPeerConnection(from, true);
-    } else {
-      console.warn('Cannot create peer: no public key for', from);
-      return;
-    }
-  }
-  const peer = peers[from].peerConnection;
-  if (!peer) {
-    console.warn('No peer connection for', from);
-    return;
-  }
-
-  if (signal.type === 'offer') {
-    console.log('Received offer, setting remote description and creating answer');
-    await peer.setRemoteDescription(new RTCSessionDescription(signal));
-    const answer = await peer.createAnswer();
-    await peer.setLocalDescription(answer);
-    socket.emit('signal', { to: from, signal: answer });
-  } else if (signal.type === 'answer') {
-    console.log('Received answer, setting remote description');
-    await peer.setRemoteDescription(new RTCSessionDescription(signal));
-  } else if (signal.candidate) {
-    console.log('Received ICE candidate');
-    await peer.addIceCandidate(new RTCIceCandidate(signal));
-  }
-});
-
-// Override send button for group messages
-sendBtn.onclick = () => {
-  const text = messageInput.value.trim();
-  if (!text) return;
-
-  if (currentGroupId) {
-    const group = groups[currentGroupId];
-    if (!group) return;
-    const encrypted = CryptoJS.AES.encrypt(text, group.key).toString();
-    const groupMsg = { type: 'group-text', groupId: currentGroupId, data: encrypted };
-    group.members.forEach(memberId => {
-      const peer = peers[memberId];
-      if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
-        peer.dataChannel.send(JSON.stringify(groupMsg));
-      }
-    });
-    group.messages.push({ text, sender: myUsername, timestamp: Date.now() });
-    appendMessage(text, 'me', true);
-  } else {
-    // One‑on‑one
-    for (let targetId in peers) {
-      const channel = peers[targetId].dataChannel;
-      const key = peers[targetId].encryptionKey;
-      if (channel && channel.readyState === 'open') {
-        try {
-          const encrypted = CryptoJS.AES.encrypt(text, key).toString();
-          channel.send(encrypted);
-        } catch (err) { console.error('Send error:', err); }
-      }
-    }
-    appendMessage(text, 'me', false);
-  }
-  messageInput.value = '';
-};
-
-// Group creation
-if (createGroupBtn) {
-  createGroupBtn.addEventListener('click', () => {
-    const memberIds = prompt('Enter member IDs (comma‑separated):');
-    if (!memberIds) return;
-    const selectedIds = memberIds.split(',').map(id => id.trim()).filter(id => id);
-    if (selectedIds.length === 0) return;
-    const groupName = prompt('Enter group name:') || 'Unnamed Group';
-    const groupId = 'group_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-    const groupKey = CryptoJS.lib.WordArray.random(32).toString();
-    groups[groupId] = { name: groupName, members: selectedIds, key: groupKey, messages: [] };
-    selectedIds.forEach(targetId => {
-      const peer = peers[targetId];
-      if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
-        const invite = { type: 'group-invite', groupId, groupName, key: groupKey, members: selectedIds };
-        peer.dataChannel.send(JSON.stringify(invite));
-      }
-    });
-    renderGroupList();
-    openGroupChat(groupId);
-  });
-}
-
-if (leaveGroupBtn) {
-  leaveGroupBtn.addEventListener('click', () => {
-    currentGroupId = null;
-    groupChatHeader.style.display = 'none';
-    messagesDiv.innerHTML = '';
-  });
-}
-
-// ========== PAYMENT FUNCTIONS ==========
-async function deriveWalletFromMasterKey(privateKey) {
-  const jwk = await crypto.subtle.exportKey('jwk', privateKey);
-  const privateBase64Url = jwk.d;
-  const privateBase64 = privateBase64Url.replace(/-/g, '+').replace(/_/g, '/');
-  const privateKeyRaw = Uint8Array.from(atob(privateBase64), c => c.charCodeAt(0));
-  const seed = await crypto.subtle.digest('SHA-256', privateKeyRaw);
-  const privateKeyHex = Array.from(new Uint8Array(seed.slice(0, 32)))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
-  return new ethers.Wallet('0x' + privateKeyHex);
-}
-
-function getTokenAddress(token, chainId) {
-  if (chainId === 11155111) {
-    const addresses = { usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', usdt: '', dai: '' };
-    return addresses[token];
-  }
-  const addresses = {
-    usdc: '0x07865c6E87B9F70255377e024ace6630C1Eaa37F',
-    usdt: '0x7D4CcE7fB4cDBb702F134e284FfDC8D80B0BF720',
-    dai: '0x11fE4B6AE13d2a6055C8D9cF65c55bac32B5a5e8'
-  };
-  return addresses[token];
-}
-
-function updateRecipientField() {
-  const connected = Object.keys(peers).filter(id => peers[id]?.walletAddress);
-  if (connected.length > 0) recipientAddressInput.value = peers[connected[0]].walletAddress;
-}
-
-async function refreshBalances() {
-  if (!provider || !userWallet || !balanceListDiv) return;
-  balanceListDiv.innerHTML = '';
-  const tokens = [
-    { symbol: 'USDC', address: getTokenAddress('usdc', currentNetwork.chainId) },
-    { symbol: 'USDT', address: getTokenAddress('usdt', currentNetwork.chainId) },
-    { symbol: 'DAI', address: getTokenAddress('dai', currentNetwork.chainId) }
-  ];
-  for (const token of tokens) {
-    if (!token.address) continue;
-    try {
-      const tokenContract = new ethers.Contract(
-        token.address,
-        ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)'],
-        provider
-      );
-      const balance = await tokenContract.balanceOf(userWallet.address);
-      const decimals = await tokenContract.decimals();
-      const formatted = ethers.utils.formatUnits(balance, decimals);
-      const div = document.createElement('div');
-      div.className = 'balance-item';
-      div.innerHTML = `<span>${token.symbol}</span><span>${formatted}</span>`;
-      balanceListDiv.appendChild(div);
-    } catch (err) {
-      const div = document.createElement('div');
-      div.className = 'balance-item';
-      div.innerHTML = `<span>${token.symbol}</span><span>Error</span>`;
-      balanceListDiv.appendChild(div);
-    }
-  }
-  try {
-    const ethBalance = await provider.getBalance(userWallet.address);
-    const ethFormatted = ethers.utils.formatEther(ethBalance);
-    const div = document.createElement('div');
-    div.className = 'balance-item';
-    div.innerHTML = `<span>ETH</span><span>${ethFormatted}</span>`;
-    balanceListDiv.appendChild(div);
-  } catch (err) { console.error('Error fetching ETH balance:', err); }
-}
-
-if (sendPrivatePaymentBtn) {
-  sendPrivatePaymentBtn.addEventListener('click', async () => {
-    const amount = paymentAmountInput.value;
-    const token = tokenSelect.value;
-    const recipient = recipientAddressInput.value;
-    if (!amount || !recipient) { alert('Please fill all fields'); return; }
-    if (!provider || !userWallet) { paymentStatusDiv.textContent = 'Wallet not initialized'; return; }
-    try {
-      const decimals = token === 'usdc' ? 6 : 18;
-      const parsedAmount = ethers.utils.parseUnits(amount, decimals);
-      const tokenAddress = getTokenAddress(token, currentNetwork.chainId);
-      const signer = userWallet.connect(provider);
-      const abi = [
-        'function transfer(address to, uint256 amount) returns (bool)',
-        'function decimals() view returns (uint8)'
-      ];
-      const tokenContract = new ethers.Contract(tokenAddress, abi, signer);
-      const tx = await tokenContract.transfer(recipient, parsedAmount);
-      paymentStatusDiv.innerHTML = `⏳ Transaction sent: <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">${tx.hash}</a>`;
-      await tx.wait();
-      paymentStatusDiv.innerHTML = `✅ Payment confirmed! <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">View</a>`;
-      setTimeout(refreshBalances, 5000);
-    } catch (err) {
-      console.error('Payment error:', err);
-      paymentStatusDiv.textContent = `❌ Error: ${err.message}`;
-    }
-  });
-}
-
-if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
-
-// ========== HYPERSWITCH ==========
-if (hyperswitchPayBtn) {
-  hyperswitchPayBtn.addEventListener('click', async () => {
-    if (typeof Hyper === 'undefined') {
-      hyperswitchStatus.textContent = '❌ Hyperswitch SDK not loaded.';
-      return;
-    }
-    const amount = parseFloat(prompt('Enter amount in USD (e.g., 10):'));
-    if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
-    if (!userWallet) { alert('Wallet not initialized'); return; }
-    try {
-      hyperswitchStatus.textContent = 'Creating payment...';
-      const oldConfirm = document.getElementById('hyperswitch-confirm-button');
-      if (oldConfirm) oldConfirm.remove();
-
-      const response = await fetch('/api/create-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount,
-          currency: 'USD',
-          customerId: `wallet_${userWallet.address}`,
-          email: `${userWallet.address}@example.com`
-        })
-      });
-      const data = await response.json();
-      if (!data.clientSecret) throw new Error('No client secret received');
-      hyperswitchStatus.textContent = '';
-
-      hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY);
-      hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
-
-      const paymentElement = hyperswitchElements.create('payment', { layout: 'tabs' });
-      paymentElement.mount('#hyperswitch-payment-element');
-
-      const confirmBtn = document.createElement('button');
-      confirmBtn.id = 'hyperswitch-confirm-button';
-      confirmBtn.textContent = 'Confirm Payment';
-      confirmBtn.style.marginTop = '10px';
-      hyperswitchElementDiv.after(confirmBtn);
-
-      confirmBtn.addEventListener('click', async function confirmHandler() {
-        confirmBtn.disabled = true;
-        hyperswitchStatus.textContent = 'Processing...';
-        try {
-          const { error, status } = await hyperswitchInstance.confirmPayment({
-            elements: hyperswitchElements,
-            confirmParams: { return_url: window.location.origin + '/payment-success.html' },
-          });
-          if (error) {
-            console.error('Payment error:', error);
-            hyperswitchStatus.textContent = '❌ Payment failed: ' + error.message;
-            confirmBtn.disabled = false;
-          } else if (status) {
-            console.log('Payment status:', status);
-            if (status === 'succeeded') {
-              hyperswitchStatus.textContent = '✅ Payment successful!';
-            } else {
-              hyperswitchStatus.textContent = `ℹ️ Payment status: ${status}`;
-            }
-            confirmBtn.remove();
-          }
-        } catch (err) {
-          console.error('Confirmation error:', err);
-          hyperswitchStatus.textContent = '❌ Error: ' + err.message;
-          confirmBtn.disabled = false;
-        }
-      }, { once: true });
-    } catch (err) {
-      console.error('Hyperswitch init error:', err);
-      hyperswitchStatus.textContent = '❌ Error: ' + err.message;
-    }
-  });
-}
-
-// ------------------------------------------------------------
-// 4. BLE Functions (unchanged – paste your existing BLE code here)
-// ------------------------------------------------------------
 async function getBLEPlugin() {
   if (typeof Capacitor === 'undefined' || !Capacitor.isNative) return null;
   try {
@@ -722,6 +398,280 @@ function displayBLEChatMessage(peerId, text, sender) {
   appendMessage(`[BLE ${shortId}] ${sender}: ${text}`, 'them');
 }
 
+// ==================== EVENT LISTENERS ====================
+
+joinBtn.addEventListener('click', async () => {
+  const name = usernameInput.value.trim();
+  if (!name) return;
+  myUsername = name;
+
+  myKeyPair = await crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    ['deriveKey', 'deriveBits']
+  );
+
+  try {
+    userWallet = await deriveWalletFromMasterKey(myKeyPair.privateKey);
+    walletAddressSpan.textContent = userWallet.address;
+    networkNameSpan.textContent = currentNetwork.name;
+    provider = new ethers.providers.JsonRpcProvider(currentNetwork.rpcUrl);
+    await refreshBalances();
+  } catch (err) {
+    console.error('Wallet derivation failed:', err);
+    walletAddressSpan.textContent = 'Error';
+  }
+
+  const publicKeyBuffer = await crypto.subtle.exportKey('raw', myKeyPair.publicKey);
+  const publicKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
+  socket.emit('join', { username: name, publicKey: publicKeyBase64 });
+
+  loginDiv.style.display = 'none';
+  mainDiv.style.display = 'grid';
+});
+
+socket.on('user-list', (users) => {
+  lastUserList = users;
+  const others = users.filter(u => u.id !== socket.id);
+  userList.innerHTML = '';
+  if (others.length === 0) {
+    userList.innerHTML = '<li>No other users online</li>';
+    return;
+  }
+  others.forEach(user => {
+    const li = document.createElement('li');
+    li.textContent = user.username;
+    li.setAttribute('data-id', user.id);
+    li.setAttribute('data-publickey', user.publicKey);
+    li.addEventListener('click', () => startChat(user.id, user.username, user.publicKey));
+    userList.appendChild(li);
+  });
+});
+
+socket.on('signal', async (data) => {
+  const { from, signal } = data;
+  if (!peers[from]) {
+    // Create peer entry on incoming signal
+    let userInfo = lastUserList.find(u => u.id === from);
+    let retries = 0;
+    while (!userInfo && retries < 10) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+      userInfo = lastUserList.find(u => u.id === from);
+      retries++;
+    }
+    if (userInfo && userInfo.publicKey) {
+      const targetPublicKey = await importPublicKey(userInfo.publicKey);
+      const sharedSecretBits = await crypto.subtle.deriveBits(
+        { name: 'ECDH', public: targetPublicKey },
+        myKeyPair.privateKey,
+        256
+      );
+      const sharedSecretBase64 = btoa(String.fromCharCode(...new Uint8Array(sharedSecretBits)));
+      peers[from] = {
+        encryptionKey: sharedSecretBase64,
+        dataChannel: null,
+        peerConnection: null,
+        walletAddress: null
+      };
+      createPeerConnection(from, true);
+    } else {
+      console.warn('Cannot create peer: no public key for', from);
+      return;
+    }
+  }
+  const peer = peers[from].peerConnection;
+  if (!peer) return;
+
+  if (signal.type === 'offer') {
+    await peer.setRemoteDescription(new RTCSessionDescription(signal));
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
+    socket.emit('signal', { to: from, signal: answer });
+  } else if (signal.type === 'answer') {
+    await peer.setRemoteDescription(new RTCSessionDescription(signal));
+  } else if (signal.candidate) {
+    await peer.addIceCandidate(new RTCIceCandidate(signal));
+  }
+});
+
+// Typing indicator
+messageInput.addEventListener('input', () => {
+  if (!myUsername) return;
+  clearTimeout(typingTimeout);
+  socket.emit('typing', { username: myUsername });
+  typingTimeout = setTimeout(() => {
+    socket.emit('stop-typing');
+  }, 1000);
+});
+
+socket.on('typing', (data) => {
+  if (typingIndicator) typingIndicator.style.display = 'flex';
+});
+socket.on('stop-typing', () => {
+  if (typingIndicator) typingIndicator.style.display = 'none';
+});
+
+// Send message (handles both one‑to‑one and group)
+sendBtn.onclick = () => {
+  const text = messageInput.value.trim();
+  if (!text) return;
+
+  if (currentGroupId) {
+    const group = groups[currentGroupId];
+    if (!group) return;
+    const encrypted = CryptoJS.AES.encrypt(text, group.key).toString();
+    const groupMsg = { type: 'group-text', groupId: currentGroupId, data: encrypted };
+    group.members.forEach(memberId => {
+      const peer = peers[memberId];
+      if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
+        peer.dataChannel.send(JSON.stringify(groupMsg));
+      }
+    });
+    group.messages.push({ text, sender: myUsername, timestamp: Date.now() });
+    appendMessage(text, 'me', true);
+  } else {
+    // One‑to‑one
+    for (let targetId in peers) {
+      const channel = peers[targetId].dataChannel;
+      const key = peers[targetId].encryptionKey;
+      if (channel && channel.readyState === 'open') {
+        try {
+          const encrypted = CryptoJS.AES.encrypt(text, key).toString();
+          channel.send(encrypted);
+        } catch (err) { console.error('Send error:', err); }
+      }
+    }
+    appendMessage(text, 'me', false);
+  }
+  messageInput.value = '';
+};
+
+// File sending
+sendFileBtn.addEventListener('click', () => {
+  const file = fileInput.files[0];
+  if (!file) { alert('Choose a file first'); return; }
+  for (let targetId in peers) {
+    const channel = peers[targetId].dataChannel;
+    const key = peers[targetId].encryptionKey;
+    if (channel && channel.readyState === 'open') sendFileViaChannel(channel, file, key);
+  }
+});
+
+function sendFileViaChannel(channel, file, encryptionKey) {
+  const CHUNK_SIZE = 64 * 1024;
+  const reader = new FileReader();
+  let offset = 0;
+  const metadata = { type: 'file-meta', name: file.name, size: file.size, mime: file.type };
+  channel.send(JSON.stringify(metadata));
+  reader.onload = (e) => {
+    const chunkData = e.target.result;
+    const wordArray = CryptoJS.lib.WordArray.create(chunkData);
+    const encrypted = CryptoJS.AES.encrypt(wordArray, encryptionKey).toString();
+    channel.send(JSON.stringify({ type: 'file-chunk', data: encrypted, offset, total: file.size }));
+    offset += CHUNK_SIZE;
+    if (offset < file.size) readNext();
+    else progressDiv.innerHTML += `<div>✅ File "${file.name}" sent.</div>`;
+    const percent = Math.min(100, Math.round((offset / file.size) * 100));
+    progressDiv.innerHTML = `📤 Sending ${file.name}: ${percent}%`;
+  };
+  function readNext() {
+    const slice = file.slice(offset, offset + CHUNK_SIZE);
+    reader.readAsArrayBuffer(slice);
+  }
+  readNext();
+}
+
+// ==================== GROUP MODAL LOGIC ====================
+if (createGroupBtn) {
+  createGroupBtn.addEventListener('click', () => {
+    const others = lastUserList.filter(u => u.id !== socket.id);
+    if (others.length === 0) {
+      alert('No other users online to add to group.');
+      return;
+    }
+    let html = '';
+    others.forEach(user => {
+      html += `
+        <label style="display: flex; align-items: center;">
+          <input type="checkbox" value="${user.id}" data-username="${user.username}">
+          <span>${user.username}</span>
+        </label>
+      `;
+    });
+    modalUserList.innerHTML = html;
+    groupModal.style.display = 'flex';
+  });
+}
+
+if (createGroupConfirm) {
+  createGroupConfirm.addEventListener('click', () => {
+    const checkboxes = document.querySelectorAll('#modalUserList input:checked');
+    const groupName = groupNameInput.value.trim();
+    if (checkboxes.length === 0) {
+      alert('Please select at least one member.');
+      return;
+    }
+    if (!groupName) {
+      alert('Please enter a group name.');
+      return;
+    }
+    const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+    const groupId = 'group_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    const groupKey = CryptoJS.lib.WordArray.random(32).toString();
+
+    groups[groupId] = {
+      name: groupName,
+      members: selectedIds,
+      key: groupKey,
+      messages: []
+    };
+
+    // Send invites to all members
+    selectedIds.forEach(targetId => {
+      const peer = peers[targetId];
+      if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
+        const invite = {
+          type: 'group-invite',
+          groupId,
+          groupName,
+          key: groupKey,
+          members: selectedIds
+        };
+        peer.dataChannel.send(JSON.stringify(invite));
+      }
+    });
+
+    renderGroupList();
+    openGroupChat(groupId);
+    groupModal.style.display = 'none';
+    groupNameInput.value = '';
+  });
+}
+
+if (cancelGroupModal) {
+  cancelGroupModal.addEventListener('click', () => {
+    groupModal.style.display = 'none';
+    groupNameInput.value = '';
+  });
+}
+
+// Close modal when clicking outside
+window.addEventListener('click', (e) => {
+  if (e.target === groupModal) {
+    groupModal.style.display = 'none';
+    groupNameInput.value = '';
+  }
+});
+
+if (leaveGroupBtn) {
+  leaveGroupBtn.addEventListener('click', () => {
+    currentGroupId = null;
+    groupChatHeader.style.display = 'none';
+    messagesDiv.innerHTML = '';
+  });
+}
+
+// ==================== BLE EVENT LISTENERS ====================
 if (enableBLEBtn) {
   enableBLEBtn.addEventListener('click', async () => {
     if (!myUsername) { alert('Please join the chat first.'); return; }
@@ -745,5 +695,187 @@ if (disableBLEBtn) {
     enableBLEBtn.disabled = false;
     disableBLEBtn.disabled = true;
     bleEnabled = false;
+  });
+}
+
+// ==================== PAYMENT FUNCTIONS ====================
+async function deriveWalletFromMasterKey(privateKey) {
+  const jwk = await crypto.subtle.exportKey('jwk', privateKey);
+  const privateBase64Url = jwk.d;
+  const privateBase64 = privateBase64Url.replace(/-/g, '+').replace(/_/g, '/');
+  const privateKeyRaw = Uint8Array.from(atob(privateBase64), c => c.charCodeAt(0));
+  const seed = await crypto.subtle.digest('SHA-256', privateKeyRaw);
+  const privateKeyHex = Array.from(new Uint8Array(seed.slice(0, 32)))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+  return new ethers.Wallet('0x' + privateKeyHex);
+}
+
+function getTokenAddress(token, chainId) {
+  if (chainId === 11155111) { // Sepolia
+    const addresses = {
+      usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+      usdt: '',
+      dai: ''
+    };
+    return addresses[token];
+  }
+  // Mainnet addresses (fallback)
+  const addresses = {
+    usdc: '0x07865c6E87B9F70255377e024ace6630C1Eaa37F',
+    usdt: '0x7D4CcE7fB4cDBb702F134e284FfDC8D80B0BF720',
+    dai: '0x11fE4B6AE13d2a6055C8D9cF65c55bac32B5a5e8'
+  };
+  return addresses[token];
+}
+
+function updateRecipientField() {
+  const connected = Object.keys(peers).filter(id => peers[id]?.walletAddress);
+  if (connected.length > 0) {
+    recipientAddressInput.value = peers[connected[0]].walletAddress;
+  }
+}
+
+async function refreshBalances() {
+  if (!provider || !userWallet || !balanceListDiv) return;
+  balanceListDiv.innerHTML = '';
+  const tokens = [
+    { symbol: 'USDC', address: getTokenAddress('usdc', currentNetwork.chainId) },
+    { symbol: 'USDT', address: getTokenAddress('usdt', currentNetwork.chainId) },
+    { symbol: 'DAI', address: getTokenAddress('dai', currentNetwork.chainId) }
+  ];
+  for (const token of tokens) {
+    if (!token.address) continue;
+    try {
+      const tokenContract = new ethers.Contract(
+        token.address,
+        ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)'],
+        provider
+      );
+      const balance = await tokenContract.balanceOf(userWallet.address);
+      const decimals = await tokenContract.decimals();
+      const formatted = ethers.utils.formatUnits(balance, decimals);
+      const div = document.createElement('div');
+      div.className = 'balance-item';
+      div.innerHTML = `<span>${token.symbol}</span><span>${formatted}</span>`;
+      balanceListDiv.appendChild(div);
+    } catch (err) {
+      const div = document.createElement('div');
+      div.className = 'balance-item';
+      div.innerHTML = `<span>${token.symbol}</span><span>Error</span>`;
+      balanceListDiv.appendChild(div);
+    }
+  }
+  try {
+    const ethBalance = await provider.getBalance(userWallet.address);
+    const ethFormatted = ethers.utils.formatEther(ethBalance);
+    const div = document.createElement('div');
+    div.className = 'balance-item';
+    div.innerHTML = `<span>ETH</span><span>${ethFormatted}</span>`;
+    balanceListDiv.appendChild(div);
+  } catch (err) { console.error('Error fetching ETH balance:', err); }
+}
+
+if (sendPrivatePaymentBtn) {
+  sendPrivatePaymentBtn.addEventListener('click', async () => {
+    const amount = paymentAmountInput.value;
+    const token = tokenSelect.value;
+    const recipient = recipientAddressInput.value;
+    if (!amount || !recipient) { alert('Please fill all fields'); return; }
+    if (!provider || !userWallet) { paymentStatusDiv.textContent = 'Wallet not initialized'; return; }
+    try {
+      const decimals = token === 'usdc' ? 6 : 18;
+      const parsedAmount = ethers.utils.parseUnits(amount, decimals);
+      const tokenAddress = getTokenAddress(token, currentNetwork.chainId);
+      const signer = userWallet.connect(provider);
+      const abi = [
+        'function transfer(address to, uint256 amount) returns (bool)',
+        'function decimals() view returns (uint8)'
+      ];
+      const tokenContract = new ethers.Contract(tokenAddress, abi, signer);
+      const tx = await tokenContract.transfer(recipient, parsedAmount);
+      paymentStatusDiv.innerHTML = `⏳ Transaction sent: <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">${tx.hash}</a>`;
+      await tx.wait();
+      paymentStatusDiv.innerHTML = `✅ Payment confirmed! <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">View</a>`;
+      setTimeout(refreshBalances, 5000);
+    } catch (err) {
+      console.error('Payment error:', err);
+      paymentStatusDiv.textContent = `❌ Error: ${err.message}`;
+    }
+  });
+}
+
+if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
+
+// ==================== HYPERSWITCH ====================
+if (hyperswitchPayBtn) {
+  hyperswitchPayBtn.addEventListener('click', async () => {
+    if (typeof Hyper === 'undefined') {
+      hyperswitchStatus.textContent = '❌ Hyperswitch SDK not loaded.';
+      return;
+    }
+    const amount = parseFloat(prompt('Enter amount in USD (e.g., 10):'));
+    if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
+    if (!userWallet) { alert('Wallet not initialized'); return; }
+    try {
+      hyperswitchStatus.textContent = 'Creating payment...';
+      const oldConfirm = document.getElementById('hyperswitch-confirm-button');
+      if (oldConfirm) oldConfirm.remove();
+
+      const response = await fetch('/api/create-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          currency: 'USD',
+          customerId: `wallet_${userWallet.address}`,
+          email: `${userWallet.address}@example.com`
+        })
+      });
+      const data = await response.json();
+      if (!data.clientSecret) throw new Error('No client secret received');
+      hyperswitchStatus.textContent = '';
+
+      hyperswitchInstance = Hyper(HYPERSWITCH_PUBLISHABLE_KEY);
+      hyperswitchElements = hyperswitchInstance.elements({ clientSecret: data.clientSecret });
+
+      const paymentElement = hyperswitchElements.create('payment', { layout: 'tabs' });
+      paymentElement.mount('#hyperswitch-payment-element');
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.id = 'hyperswitch-confirm-button';
+      confirmBtn.textContent = 'Confirm Payment';
+      confirmBtn.style.marginTop = '10px';
+      hyperswitchElementDiv.after(confirmBtn);
+
+      confirmBtn.addEventListener('click', async function confirmHandler() {
+        confirmBtn.disabled = true;
+        hyperswitchStatus.textContent = 'Processing...';
+        try {
+          const { error, status } = await hyperswitchInstance.confirmPayment({
+            elements: hyperswitchElements,
+            confirmParams: { return_url: window.location.origin + '/payment-success.html' }
+          });
+          if (error) {
+            console.error('Payment error:', error);
+            hyperswitchStatus.textContent = '❌ Payment failed: ' + error.message;
+            confirmBtn.disabled = false;
+          } else if (status) {
+            if (status === 'succeeded') {
+              hyperswitchStatus.textContent = '✅ Payment successful!';
+            } else {
+              hyperswitchStatus.textContent = `ℹ️ Payment status: ${status}`;
+            }
+            confirmBtn.remove();
+          }
+        } catch (err) {
+          console.error('Confirmation error:', err);
+          hyperswitchStatus.textContent = '❌ Error: ' + err.message;
+          confirmBtn.disabled = false;
+        }
+      }, { once: true });
+    } catch (err) {
+      console.error('Hyperswitch init error:', err);
+      hyperswitchStatus.textContent = '❌ Error: ' + err.message;
+    }
   });
 }
