@@ -5,13 +5,18 @@ const axios = require('axios');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: ["https://secure-chat-jqnr.onrender.com", "http://localhost:3000"], // Add your Render URL
+    methods: ["GET", "POST"]
+  }
+});
 
 app.use(express.static('public'));
 app.use(express.json());
 
-// ---------- Hyperswitch Configuration ----------
-const HYPERSWITCH_API_KEY = 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTVlnDlvpxk7uE1YNvl';
+// Hyperswitch Configuration
+const HYPERSWITCH_API_KEY = process.env.HYPERSWITCH_API_KEY || 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTV1nD1vpxk7uE1YNv1';
 const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';
 
 // Create a payment intent
@@ -34,17 +39,14 @@ app.post('/api/create-payment', async (req, res) => {
       }
     });
     const data = response.data;
-    res.json({
-      clientSecret: data.client_secret,
-      paymentId: data.id
-    });
+    res.json({ clientSecret: data.client_secret, paymentId: data.id });
   } catch (err) {
     console.error('Payment creation error:', err.response?.data || err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ---------- Ethereum RPC Proxy (Sepolia) ----------
+// Ethereum RPC Proxy (Sepolia)
 app.post('/rpc', async (req, res) => {
   try {
     const endpoints = [
@@ -70,7 +72,7 @@ app.post('/rpc', async (req, res) => {
   }
 });
 
-// ---------- Socket.io Signaling ----------
+// Socket.io Signaling
 let users = [];
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
@@ -78,9 +80,20 @@ io.on('connection', (socket) => {
     users.push({ id: socket.id, username: data.username, publicKey: data.publicKey });
     io.emit('user-list', users.map(u => ({ id: u.id, username: u.username, publicKey: u.publicKey })));
   });
+
   socket.on('signal', (data) => {
     io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
   });
+
+  socket.on('typing', (data) => {
+    // Broadcast to all except sender (optional)
+    socket.broadcast.emit('typing', data);
+  });
+
+  socket.on('stop-typing', () => {
+    socket.broadcast.emit('stop-typing');
+  });
+
   socket.on('disconnect', () => {
     users = users.filter(u => u.id !== socket.id);
     io.emit('user-list', users.map(u => ({ id: u.id, username: u.username, publicKey: u.publicKey })));
@@ -88,5 +101,5 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
