@@ -837,7 +837,7 @@ if (hyperswitchPayBtn) {
       confirmBtn.id = 'hyperswitch-confirm-button';
       confirmBtn.textContent = 'Confirm Payment';
       confirmBtn.style.marginTop = '10px';
-      hyperswitchElementDiv.after(confirmBtn);
+      hyperswitchElementDiv.after(confirmBtn);  
 
       confirmBtn.addEventListener('click', async function confirmHandler() {
         confirmBtn.disabled = true;
