@@ -7,19 +7,19 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Three.js canvas for 3D background -->
+  <!-- Three.js canvas for 3D background (optional, you can remove if too heavy) -->
   <canvas id="bg-canvas"></canvas>
 
   <div id="app">
     <!-- LOGIN -->
-    <div id="login">
+    <div id="login" class="visible">
       <h1>✨ NEXUS ✨</h1>
       <input id="username" placeholder="Enter your identity" />
       <button id="joinBtn">ENTER THE GRID</button>
     </div>
 
-    <!-- MAIN CHAT -->
-    <div id="main" style="display: none;">
+    <!-- MAIN CHAT (initially hidden) -->
+    <div id="main" class="hidden">
       <!-- Users Panel -->
       <div id="users">
         <h3>⚡ CONNECTED NODES</h3>
@@ -39,7 +39,7 @@
       <!-- Chat Panel -->
       <div id="chat">
         <!-- Group Chat Header (hidden by default) -->
-        <div id="groupChatHeader">
+        <div id="groupChatHeader" class="hidden">
           <span id="currentGroupName"></span>
           <button id="leaveGroupBtn">✖</button>
         </div>
@@ -47,7 +47,7 @@
         <div id="messages"></div>
 
         <!-- Typing indicator (hidden by default) -->
-        <div id="typing-indicator" class="typing">
+        <div id="typing-indicator" class="typing hidden">
           <span></span><span></span><span></span>
         </div>
 
@@ -124,7 +124,7 @@
   </div>
 
   <!-- Group Member Selection Modal (hidden by default) -->
-  <div id="groupModal">
+  <div id="groupModal" class="hidden">
     <div class="modal-content">
       <h3>Select Group Members</h3>
       <div id="modalUserList"></div>
@@ -143,7 +143,7 @@
   <script src="lib/hyperswitch.js"></script>
   <script src="client.js" type="module"></script>
 
-  <!-- Three.js for 3D background -->
+  <!-- Three.js for 3D background (optional) -->
   <script type="importmap">
     {
       "imports": {
