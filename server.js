@@ -21,12 +21,19 @@ app.use(express.static('public'));
 app.use(express.json());
 
 // ==================== Hyperswitch Configuration ====================
-const HYPERSWITCH_API_KEY = process.env.HYPERSWITCH_API_KEY || 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTV1nD1vpxk7uE1YNv1';
+// IMPORTANT: Set this environment variable on Render!
+const HYPERSWITCH_API_KEY = process.env.HYPERSWITCH_API_KEY;
+if (!HYPERSWITCH_API_KEY) {
+  console.error('WARNING: HYPERSWITCH_API_KEY environment variable not set. Payments will fail.');
+}
 const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';
 
 // Create a payment intent
 app.post('/api/create-payment', async (req, res) => {
   try {
+    if (!HYPERSWITCH_API_KEY) {
+      return res.status(500).json({ error: 'Hyperswitch API key not configured' });
+    }
     const { amount, currency, customerId, email } = req.body;
     const paymentData = {
       amount: amount * 100, // convert to cents
@@ -37,6 +44,7 @@ app.post('/api/create-payment', async (req, res) => {
       email: email || 'customer@example.com',
       metadata: { order_id: `order_${Date.now()}` }
     };
+    console.log('Creating Hyperswitch payment with data:', paymentData);
     const response = await axios.post(`${HYPERSWITCH_URL}/payments`, paymentData, {
       headers: {
         'Content-Type': 'application/json',
@@ -44,14 +52,15 @@ app.post('/api/create-payment', async (req, res) => {
       }
     });
     const data = response.data;
+    console.log('Hyperswitch response:', data);
     res.json({ clientSecret: data.client_secret, paymentId: data.id });
   } catch (err) {
     console.error('Payment creation error:', err.response?.data || err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message, details: err.response?.data });
   }
 });
 
-// ==================== Ethereum RPC Proxy (Sepolia) ====================
+// ==================== Ethereum RPC Proxy ====================
 app.post('/rpc', async (req, res) => {
   try {
     const endpoints = [
