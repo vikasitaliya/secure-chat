@@ -6,7 +6,7 @@ let myUsername = null;
 let myKeyPair = null;
 let peers = {};               // { peerId: { encryptionKey, dataChannel, peerConnection, walletAddress, pendingInvites } }
 let groups = {};              // { groupId: { name, members, key, messages } }
-let currentGroupId = null;    // currently open group
+let currentGroupId = null;
 let receivingFile = null;
 let lastUserList = [];
 let typingTimeout = null;
@@ -30,7 +30,7 @@ const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
 let hyperswitchInstance = null;
 let hyperswitchElements = null;
 
-// ==================== DOM ELEMENTS ====================
+// DOM Elements
 const loginDiv = document.getElementById('login');
 const mainDiv = document.getElementById('main');
 const usernameInput = document.getElementById('username');
@@ -132,7 +132,6 @@ function setupDataChannel(channel, targetId) {
   channel.onopen = () => {
     console.log(`Data channel opened with ${targetId}`);
     peers[targetId].dataChannel = channel;
-    // Send any pending group invites
     if (peers[targetId].pendingInvites && peers[targetId].pendingInvites.length) {
       peers[targetId].pendingInvites.forEach(invite => {
         channel.send(JSON.stringify(invite));
@@ -214,7 +213,6 @@ function setupDataChannel(channel, targetId) {
         return;
       }
     } catch (e) {
-      // Not JSON – assume encrypted one‑on‑one text
       try {
         const bytes = CryptoJS.AES.decrypt(event.data, encryptionKey);
         const plaintext = bytes.toString(CryptoJS.enc.Utf8);
@@ -411,12 +409,11 @@ joinBtn.addEventListener('click', async () => {
   const publicKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
   socket.emit('join', { username: name, publicKey: publicKeyBase64 });
 
-  // Animated transition
   loginDiv.classList.add('hidden');
   setTimeout(() => {
     loginDiv.style.display = 'none';
     mainDiv.classList.remove('hidden');
-  }, 500); // match CSS transition duration
+  }, 500);
 });
 
 socket.on('user-list', (users) => {
@@ -483,7 +480,6 @@ socket.on('signal', async (data) => {
   }
 });
 
-// Typing indicator
 messageInput.addEventListener('input', () => {
   if (!myUsername) return;
   clearTimeout(typingTimeout);
@@ -500,7 +496,6 @@ socket.on('stop-typing', () => {
   typingIndicator.classList.add('hidden');
 });
 
-// Send message
 sendBtn.onclick = () => {
   const text = messageInput.value.trim();
   if (!text) return;
@@ -534,7 +529,6 @@ sendBtn.onclick = () => {
   messageInput.value = '';
 };
 
-// File sending
 sendFileBtn.addEventListener('click', () => {
   const file = fileInput.files[0];
   if (!file) { alert('Choose a file first'); return; }
@@ -700,7 +694,7 @@ async function deriveWalletFromMasterKey(privateKey) {
 }
 
 function getTokenAddress(token, chainId) {
-  if (chainId === 11155111) { // Sepolia
+  if (chainId === 11155111) {
     const addresses = {
       usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
       usdt: '',
