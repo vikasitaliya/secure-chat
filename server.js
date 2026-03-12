@@ -5,17 +5,22 @@ const axios = require('axios');
 
 const app = express();
 const server = http.createServer(app);
+
+// Allow both local and Render deployments
 const io = new Server(server, {
   cors: {
-    origin: ["https://secure-chat-jqnr.onrender.com", "http://localhost:3000"], // Add your Render URL
-    methods: ["GET", "POST"]
+    origin: [
+      'https://secure-chat-jqnr.onrender.com',
+      'http://localhost:3000'
+    ],
+    methods: ['GET', 'POST']
   }
 });
 
 app.use(express.static('public'));
 app.use(express.json());
 
-// Hyperswitch Configuration
+// ==================== Hyperswitch Configuration ====================
 const HYPERSWITCH_API_KEY = process.env.HYPERSWITCH_API_KEY || 'snd_vh8blUJfyKM9ajHm3HaqLuuJk4kiktyewF9Pua7V5CrRjeTV1nD1vpxk7uE1YNv1';
 const HYPERSWITCH_URL = 'https://sandbox.hyperswitch.io';
 
@@ -24,7 +29,7 @@ app.post('/api/create-payment', async (req, res) => {
   try {
     const { amount, currency, customerId, email } = req.body;
     const paymentData = {
-      amount: amount * 100, // cents
+      amount: amount * 100, // convert to cents
       currency: currency || 'USD',
       confirm: false,
       capture_method: 'automatic',
@@ -46,7 +51,7 @@ app.post('/api/create-payment', async (req, res) => {
   }
 });
 
-// Ethereum RPC Proxy (Sepolia)
+// ==================== Ethereum RPC Proxy (Sepolia) ====================
 app.post('/rpc', async (req, res) => {
   try {
     const endpoints = [
@@ -72,10 +77,11 @@ app.post('/rpc', async (req, res) => {
   }
 });
 
-// Socket.io Signaling
+// ==================== Socket.io Signaling ====================
 let users = [];
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
+
   socket.on('join', (data) => {
     users.push({ id: socket.id, username: data.username, publicKey: data.publicKey });
     io.emit('user-list', users.map(u => ({ id: u.id, username: u.username, publicKey: u.publicKey })));
@@ -86,7 +92,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('typing', (data) => {
-    // Broadcast to all except sender (optional)
     socket.broadcast.emit('typing', data);
   });
 
@@ -102,4 +107,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
