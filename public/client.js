@@ -32,7 +32,46 @@ const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
 let hyperswitchInstance = null;
 let hyperswitchElements = null;
 
-// DOM Elements (same as before – omitted for brevity, but keep all your existing DOM element declarations)
+// ==================== DOM ELEMENTS ====================
+const loginDiv = document.getElementById('login');
+const mainDiv = document.getElementById('main');
+const usernameInput = document.getElementById('username');
+const joinBtn = document.getElementById('joinBtn');
+const userList = document.getElementById('userList');
+const messagesDiv = document.getElementById('messages');
+const messageInput = document.getElementById('messageInput');
+const sendBtn = document.getElementById('sendBtn');
+const fileInput = document.getElementById('fileInput');
+const sendFileBtn = document.getElementById('sendFileBtn');
+const progressDiv = document.getElementById('progress');
+const enableBLEBtn = document.getElementById('enableBLEBtn');
+const disableBLEBtn = document.getElementById('disableBLEBtn');
+const nearbyDevicesDiv = document.getElementById('nearbyDevices');
+const walletAddressSpan = document.getElementById('wallet-address');
+const networkNameSpan = document.getElementById('network-name');
+const tokenSelect = document.getElementById('token-select');
+const paymentAmountInput = document.getElementById('payment-amount');
+const recipientAddressInput = document.getElementById('recipient-address');
+const sendPrivatePaymentBtn = document.getElementById('send-private-payment');
+const paymentStatusDiv = document.getElementById('payment-status');
+const balanceListDiv = document.getElementById('balance-list');
+const refreshBalancesBtn = document.getElementById('refresh-balances');
+const hyperswitchPayBtn = document.getElementById('hyperswitch-pay-button');
+const hyperswitchStatus = document.getElementById('hyperswitch-status');
+const hyperswitchElementDiv = document.getElementById('hyperswitch-payment-element');
+const typingIndicator = document.getElementById('typing-indicator');
+
+// Group elements
+const createGroupBtn = document.getElementById('createGroupBtn');
+const groupListDiv = document.getElementById('groupList');
+const groupChatHeader = document.getElementById('groupChatHeader');
+const currentGroupNameSpan = document.getElementById('currentGroupName');
+const leaveGroupBtn = document.getElementById('leaveGroupBtn');
+const groupModal = document.getElementById('groupModal');
+const modalUserList = document.getElementById('modalUserList');
+const groupNameInput = document.getElementById('groupNameInput');
+const createGroupConfirm = document.getElementById('createGroupConfirm');
+const cancelGroupModal = document.getElementById('cancelGroupModal');
 
 // ==================== PERSISTENT STORAGE ====================
 const db = localforage.createInstance({
@@ -103,7 +142,6 @@ function handleGroupInvite(data) {
   if (groups[groupId]) return;
   groups[groupId] = { name: groupName, members, key };
   renderGroupList();
-  // Save a system message? Not needed.
 }
 
 function renderGroupList() {
@@ -456,7 +494,106 @@ async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
 }
 
 // ==================== BLE FUNCTIONS ====================
-// ... (keep your existing BLE functions unchanged)
+async function getBLEPlugin() {
+  if (typeof Capacitor === 'undefined' || !Capacitor.isNative) return null;
+  try {
+    const module = await import('@capgo/capacitor-bluetooth-low-energy');
+    return module.BluetoothLowEnergy;
+  } catch (err) {
+    console.error('Failed to load BLE plugin:', err);
+    return null;
+  }
+}
+
+async function startBLEAdvert() {
+  const ble = await getBLEPlugin();
+  if (!ble || !myUsername || bleAdvertising) return;
+  try {
+    await ble.startAdvertising({
+      deviceName: `Chat_${myUsername}`,
+      services: [BLE_SERVICE_UUID],
+      characteristics: [{
+        uuid: BLE_CHARACTERISTIC_UUID,
+        properties: ['Read', 'Write', 'Notify'],
+        permissions: ['Readable', 'Writable'],
+        value: ''
+      }]
+    });
+    bleAdvertising = true;
+  } catch (err) { console.error('Start advertising failed:', err); }
+}
+
+async function stopBLEAdvert() {
+  const ble = await getBLEPlugin();
+  if (!ble || !bleAdvertising) return;
+  try { await ble.stopAdvertising(); bleAdvertising = false; } catch (err) { console.error('Stop advertising failed:', err); }
+}
+
+async function startBLEScan() {
+  const ble = await getBLEPlugin();
+  if (!ble || bleScanning) return;
+  try {
+    await ble.startScan({ services: [BLE_SERVICE_UUID] });
+    bleScanning = true;
+    ble.addListener('deviceScanned', (device) => addDeviceToList(device));
+  } catch (err) { console.error('Start scan failed:', err); }
+}
+
+async function stopBLEScan() {
+  const ble = await getBLEPlugin();
+  if (!ble || !bleScanning) return;
+  try { await ble.stopScan(); bleScanning = false; } catch (err) { console.error('Stop scan failed:', err); }
+}
+
+function addDeviceToList(device) {
+  if (!nearbyDevicesDiv) return;
+  if (document.getElementById(`device-${device.deviceId}`)) return;
+  const btn = document.createElement('button');
+  btn.id = `device-${device.deviceId}`;
+  btn.textContent = device.name || device.deviceId;
+  btn.onclick = () => connectToBLEDevice(device.deviceId);
+  nearbyDevicesDiv.appendChild(btn);
+}
+
+async function connectToBLEDevice(deviceId) {
+  const ble = await getBLEPlugin();
+  if (!ble || bleConnectedDeviceId) return;
+  try {
+    await ble.connect({ deviceId });
+    bleConnectedDeviceId = deviceId;
+    await ble.discoverServices({ deviceId });
+    ble.addListener('characteristicChanged', ({ characteristic, value }) => {
+      if (characteristic === BLE_CHARACTERISTIC_UUID) {
+        const encrypted = new TextDecoder().decode(value);
+        const key = getKeyForPeer(deviceId);
+        if (key) {
+          const bytes = CryptoJS.AES.decrypt(encrypted, key);
+          const plaintext = bytes.toString(CryptoJS.enc.Utf8);
+          displayBLEChatMessage(deviceId, plaintext, 'them');
+        }
+      }
+    });
+  } catch (err) { console.error('BLE connect error:', err); }
+}
+
+async function disconnectBLEDevice() {
+  const ble = await getBLEPlugin();
+  if (!ble || !bleConnectedDeviceId) return;
+  try { await ble.disconnect({ deviceId: bleConnectedDeviceId }); bleConnectedDeviceId = null; } catch (err) { console.error('Disconnect error:', err); }
+}
+
+function storeKeyForPeer(peerId, key) { peerKeys[peerId] = key; }
+function getKeyForPeer(peerId) { return peerKeys[peerId]; }
+
+function displayBLEChatMessage(peerId, text, sender) {
+  const shortId = peerId.substring(0, 6);
+  // For BLE, we'll treat as one-to-one and not store history
+  const msgDiv = document.createElement('div');
+  msgDiv.className = `message them`;
+  msgDiv.innerHTML = `<div>[BLE ${shortId}] ${sender}: ${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+  messagesDiv.appendChild(msgDiv);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
 
 // ==================== EVENT LISTENERS ====================
 
@@ -596,7 +733,6 @@ sendBtn.onclick = () => {
         peer.dataChannel.send(JSON.stringify(groupMsg));
       }
     });
-    // Save to DB and display immediately
     const messageObj = {
       type: 'text',
       text,
@@ -656,7 +792,6 @@ sendFileBtn.addEventListener('click', () => {
       mime: file.type,
       senderName: myUsername
     };
-    // Send metadata to all members
     group.members.forEach(memberId => {
       if (memberId === socket.id) return;
       const peer = peers[memberId];
@@ -803,8 +938,7 @@ if (createGroupConfirm) {
     groups[groupId] = {
       name: groupName,
       members: allMembers,
-      key: groupKey,
-      messages: []
+      key: groupKey
     };
     console.log('Group created:', groups[groupId]);
 
