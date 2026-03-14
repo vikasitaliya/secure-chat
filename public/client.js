@@ -837,7 +837,7 @@ if (hyperswitchPayBtn) {
       confirmBtn.id = 'hyperswitch-confirm-button';
       confirmBtn.textContent = 'Confirm Payment';
       confirmBtn.style.marginTop = '10px';
-      hyperswitchElementDiv.after(confirmBtn);  
+      hyperswitchElementDiv.after(confirmBtn);
 
       confirmBtn.addEventListener('click', async function confirmHandler() {
         confirmBtn.disabled = true;
@@ -852,12 +852,14 @@ if (hyperswitchPayBtn) {
             hyperswitchStatus.textContent = '❌ Payment failed: ' + error.message;
             confirmBtn.disabled = false;
           } else if (status) {
+            console.log('Payment status:', status);
             if (status === 'succeeded') {
-              hyperswitchStatus.textContent = '✅ Payment successful!';
+              hyperswitchStatus.textContent = '✅ Payment successful! Redirecting...';
+              // SDK will redirect automatically
             } else {
               hyperswitchStatus.textContent = `ℹ️ Payment status: ${status}`;
+              confirmBtn.disabled = false;
             }
-            confirmBtn.remove();
           }
         } catch (err) {
           console.error('Confirmation error:', err);
