@@ -21,7 +21,6 @@ app.use(express.static('public'));
 app.use(express.json());
 
 // ==================== Hyperswitch Configuration ====================
-// IMPORTANT: Set this environment variable on Render!
 const HYPERSWITCH_API_KEY = process.env.HYPERSWITCH_API_KEY;
 if (!HYPERSWITCH_API_KEY) {
   console.error('WARNING: HYPERSWITCH_API_KEY environment variable not set. Payments will fail.');
@@ -36,7 +35,7 @@ app.post('/api/create-payment', async (req, res) => {
     }
     const { amount, currency, customerId, email } = req.body;
     const paymentData = {
-      amount: amount * 100, // convert to cents
+      amount: amount * 100,
       currency: currency || 'USD',
       confirm: false,
       capture_method: 'automatic',
@@ -60,7 +59,7 @@ app.post('/api/create-payment', async (req, res) => {
   }
 });
 
-// ==================== Ethereum RPC Proxy ====================
+// Ethereum RPC Proxy
 app.post('/rpc', async (req, res) => {
   try {
     const endpoints = [
@@ -86,7 +85,7 @@ app.post('/rpc', async (req, res) => {
   }
 });
 
-// ==================== Socket.io Signaling ====================
+// Socket.io Signaling
 let users = [];
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
