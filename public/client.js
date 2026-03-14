@@ -94,15 +94,8 @@ function getOneToOneChatId(peerUsername) {
   return `chat:${participants[0]}:${participants[1]}`;
 }
 
-// ==================== HELPER FUNCTIONS ====================
-async function importPublicKey(base64Key) {
-  const binary = atob(base64Key);
-  const buffer = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) buffer[i] = binary.charCodeAt(i);
-  return await crypto.subtle.importKey('raw', buffer, { name: 'ECDH', namedCurve: 'P-256' }, true, []);
-}
-
-function appendMessage(text, sender, isGroup = false, chatId = null) {
+// ==================== MESSAGE RENDERING ====================
+function appendMessage(text, sender, isGroup = false, chatId = null, save = true) {
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${sender}`;
   const prefix = isGroup ? '[Group] ' : '';
@@ -110,8 +103,9 @@ function appendMessage(text, sender, isGroup = false, chatId = null) {
   messagesDiv.appendChild(msgDiv);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-  if (chatId) {
+  if (save && chatId) {
     const messageObj = {
+      type: 'text',
       text,
       sender,
       isGroup,
@@ -121,8 +115,39 @@ function appendMessage(text, sender, isGroup = false, chatId = null) {
   }
 }
 
-function appendSystemMessage(text, sender) {
-  appendMessage(text, sender, false);
+function appendFileMessage(metadata, sender, isGroup, chatId, save = true) {
+  const msgDiv = document.createElement('div');
+  msgDiv.className = `message ${sender}`;
+  const prefix = isGroup ? '[Group] ' : '';
+  const fileSize = (metadata.size / 1024).toFixed(1) + ' KB';
+  let icon = '📄';
+  if (metadata.mime.startsWith('image/')) icon = '🖼️';
+  else if (metadata.mime.startsWith('video/')) icon = '🎥';
+  else if (metadata.mime.startsWith('audio/')) icon = '🎵';
+  msgDiv.innerHTML = `<div>${prefix}${icon} <strong>${metadata.name}</strong> (${fileSize})</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+  messagesDiv.appendChild(msgDiv);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+  if (save && chatId) {
+    const messageObj = {
+      type: 'file',
+      name: metadata.name,
+      size: metadata.size,
+      mime: metadata.mime,
+      sender,
+      isGroup,
+      timestamp: Date.now()
+    };
+    saveMessage(chatId, messageObj);
+  }
+}
+
+// ==================== HELPER FUNCTIONS ====================
+async function importPublicKey(base64Key) {
+  const binary = atob(base64Key);
+  const buffer = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) buffer[i] = binary.charCodeAt(i);
+  return await crypto.subtle.importKey('raw', buffer, { name: 'ECDH', namedCurve: 'P-256' }, true, []);
 }
 
 function handleGroupInvite(data) {
@@ -130,7 +155,7 @@ function handleGroupInvite(data) {
   if (groups[groupId]) return;
   groups[groupId] = { name: groupName, members, key, messages: [] };
   renderGroupList();
-  appendSystemMessage(`Added to group "${groupName}"`, 'them');
+  appendMessage(`Added to group "${groupName}"`, 'them', false, null, true);
 }
 
 function renderGroupList() {
@@ -149,7 +174,6 @@ function renderGroupList() {
 
 async function openGroupChat(groupId) {
   console.log('Opening group chat:', groupId);
-  // Leave one‑to‑one chat
   currentPeerId = null;
   currentGroupId = groupId;
   const group = groups[groupId];
@@ -158,21 +182,22 @@ async function openGroupChat(groupId) {
   groupChatHeader.classList.remove('hidden');
   messagesDiv.innerHTML = '';
 
-  // Load persistent messages for this group
   const storedMessages = await loadMessages(groupId);
   storedMessages.forEach(msg => {
-    appendMessage(msg.text, msg.sender, true, groupId);
+    if (msg.type === 'file') {
+      appendFileMessage(msg, msg.sender, true, groupId, false);
+    } else {
+      appendMessage(msg.text, msg.sender, true, groupId, false);
+    }
   });
 
-  // Also show in‑memory messages (if any new ones not yet saved)
   group.messages.forEach(msg => {
-    appendMessage(msg.text, msg.sender === myUsername ? 'me' : 'them', true, groupId);
+    appendMessage(msg.text, msg.sender === myUsername ? 'me' : 'them', true, groupId, true);
   });
 }
 
 async function selectPeer(peerId, peerUsername) {
   console.log('Selecting peer:', peerUsername);
-  // Leave group chat if active
   if (currentGroupId) {
     groupChatHeader.classList.add('hidden');
     currentGroupId = null;
@@ -182,7 +207,11 @@ async function selectPeer(peerId, peerUsername) {
   const chatId = getOneToOneChatId(peerUsername);
   const storedMessages = await loadMessages(chatId);
   storedMessages.forEach(msg => {
-    appendMessage(msg.text, msg.sender, false, chatId);
+    if (msg.type === 'file') {
+      appendFileMessage(msg, msg.sender, false, chatId, false);
+    } else {
+      appendMessage(msg.text, msg.sender, false, chatId, false);
+    }
   });
 }
 
@@ -229,9 +258,9 @@ function setupDataChannel(channel, targetId) {
           if (plaintext) {
             group.messages.push({ text: plaintext, sender: 'Them', timestamp: Date.now() });
             if (currentGroupId === obj.groupId) {
-              appendMessage(plaintext, 'them', true, obj.groupId);
+              appendMessage(plaintext, 'them', true, obj.groupId, true);
             } else {
-              saveMessage(obj.groupId, { text: plaintext, sender: 'them', isGroup: true, timestamp: Date.now() });
+              saveMessage(obj.groupId, { type: 'text', text: plaintext, sender: 'them', isGroup: true, timestamp: Date.now() });
             }
           }
         }
@@ -280,6 +309,13 @@ function setupDataChannel(channel, targetId) {
           a.click();
           URL.revokeObjectURL(url);
           progressDiv.innerHTML += `<div>✅ File "${receivingFile.name}" received in group.</div>`;
+          appendFileMessage(
+            { name: receivingFile.name, size: receivingFile.size, mime: receivingFile.mime },
+            'them',
+            true,
+            receivingFile.groupId,
+            true
+          );
           receivingFile = null;
           receivingFileChatId = null;
         }
@@ -320,6 +356,13 @@ function setupDataChannel(channel, targetId) {
           a.click();
           URL.revokeObjectURL(url);
           progressDiv.innerHTML += `<div>✅ File "${receivingFile.name}" received.</div>`;
+          appendFileMessage(
+            { name: receivingFile.name, size: receivingFile.size, mime: receivingFile.mime },
+            'them',
+            false,
+            receivingFileChatId,
+            true
+          );
           receivingFile = null;
           receivingFileChatId = null;
         }
@@ -330,7 +373,7 @@ function setupDataChannel(channel, targetId) {
         peer.walletAddress = obj.address;
         const peerUsername = peer.username || targetId;
         const chatId = getOneToOneChatId(peerUsername);
-        appendMessage('🔗 Peer wallet address received', 'them', false, chatId);
+        appendMessage('🔗 Peer wallet address received', 'them', false, chatId, true);
         updateRecipientField();
         return;
       }
@@ -342,7 +385,7 @@ function setupDataChannel(channel, targetId) {
         if (plaintext) {
           const peerUsername = peer.username || targetId;
           const chatId = getOneToOneChatId(peerUsername);
-          appendMessage(plaintext, 'them', false, chatId);
+          appendMessage(plaintext, 'them', false, chatId, true);
         }
       } catch (decryptErr) {
         console.error('Decryption error:', decryptErr);
@@ -382,7 +425,6 @@ function createPeerConnection(targetId, isReceiver) {
 
 async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
   if (peers[targetId]) {
-    // Already connected – just select the chat
     await selectPeer(targetId, targetUsername);
     return;
   }
@@ -507,7 +549,7 @@ function getKeyForPeer(peerId) { return peerKeys[peerId]; }
 
 function displayBLEChatMessage(peerId, text, sender) {
   const shortId = peerId.substring(0, 6);
-  appendMessage(`[BLE ${shortId}] ${sender}: ${text}`, 'them');
+  appendMessage(`[BLE ${shortId}] ${sender}: ${text}`, 'them', false, null, true);
 }
 
 // ==================== EVENT LISTENERS ====================
@@ -644,7 +686,7 @@ sendBtn.onclick = () => {
       }
     });
     group.messages.push({ text, sender: myUsername, timestamp: Date.now() });
-    appendMessage(text, 'me', true, currentGroupId);
+    appendMessage(text, 'me', true, currentGroupId, true);
   } else if (currentPeerId) {
     const peer = peers[currentPeerId];
     if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
@@ -652,7 +694,7 @@ sendBtn.onclick = () => {
         const encrypted = CryptoJS.AES.encrypt(text, peer.encryptionKey).toString();
         peer.dataChannel.send(encrypted);
         const chatId = getOneToOneChatId(peer.username || currentPeerId);
-        appendMessage(text, 'me', false, chatId);
+        appendMessage(text, 'me', false, chatId, true);
       } catch (err) {
         console.error('Send error:', err);
         alert('Failed to send message.');
@@ -714,7 +756,17 @@ sendFileBtn.addEventListener('click', () => {
       });
       offset += CHUNK_SIZE;
       if (offset < file.size) readNext();
-      else progressDiv.innerHTML += `<div>✅ File "${file.name}" sent to group.</div>`;
+      else {
+        progressDiv.innerHTML += `<div>✅ File "${file.name}" sent to group.</div>`;
+        // Append file message for sender
+        appendFileMessage(
+          { name: file.name, size: file.size, mime: file.type },
+          'me',
+          true,
+          currentGroupId,
+          true
+        );
+      }
       const percent = Math.min(100, Math.round((offset / file.size) * 100));
       progressDiv.innerHTML = `📤 Sending ${file.name} to group: ${percent}%`;
     };
@@ -732,13 +784,14 @@ sendFileBtn.addEventListener('click', () => {
       alert('Not connected to this user.');
       return;
     }
-    sendFileViaChannel(peer.dataChannel, file, peer.encryptionKey, false);
+    const chatId = getOneToOneChatId(peer.username || currentPeerId);
+    sendFileViaChannel(peer.dataChannel, file, peer.encryptionKey, chatId);
   } else {
     alert('Please select a user or group to chat with.');
   }
 });
 
-function sendFileViaChannel(channel, file, encryptionKey, isGroup = false) {
+function sendFileViaChannel(channel, file, encryptionKey, chatId) {
   const CHUNK_SIZE = 64 * 1024;
   const reader = new FileReader();
   let offset = 0;
@@ -751,7 +804,17 @@ function sendFileViaChannel(channel, file, encryptionKey, isGroup = false) {
     channel.send(JSON.stringify({ type: 'file-chunk', data: encrypted, offset, total: file.size }));
     offset += CHUNK_SIZE;
     if (offset < file.size) readNext();
-    else progressDiv.innerHTML += `<div>✅ File "${file.name}" sent.</div>`;
+    else {
+      progressDiv.innerHTML += `<div>✅ File "${file.name}" sent.</div>`;
+      // Append file message for sender
+      appendFileMessage(
+        { name: file.name, size: file.size, mime: file.type },
+        'me',
+        false,
+        chatId,
+        true
+      );
+    }
     const percent = Math.min(100, Math.round((offset / file.size) * 100));
     progressDiv.innerHTML = `📤 Sending ${file.name}: ${percent}%`;
   };
