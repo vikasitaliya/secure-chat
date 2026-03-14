@@ -4,7 +4,7 @@ const socket = io(window.location.origin);
 // ==================== STATE ====================
 let myUsername = null;
 let myKeyPair = null;
-let peers = {};               // { peerId: { encryptionKey, dataChannel, peerConnection, walletAddress, pendingInvites } }
+let peers = {};               // { peerId: { encryptionKey, dataChannel, peerConnection, walletAddress, pendingInvites, username } }
 let groups = {};              // { groupId: { name, members, key, messages } }
 let currentGroupId = null;
 let receivingFile = null;
@@ -71,6 +71,28 @@ const groupNameInput = document.getElementById('groupNameInput');
 const createGroupConfirm = document.getElementById('createGroupConfirm');
 const cancelGroupModal = document.getElementById('cancelGroupModal');
 
+// ==================== PERSISTENT STORAGE ====================
+const db = localforage.createInstance({
+  name: 'nexusChat'
+});
+
+async function saveMessage(chatId, message) {
+  let messages = await db.getItem(chatId) || [];
+  messages.push(message);
+  await db.setItem(chatId, messages);
+}
+
+async function loadMessages(chatId) {
+  return await db.getItem(chatId) || [];
+}
+
+// Helper to generate a stable chat ID for one-to-one chats
+function getOneToOneChatId(peerUsername) {
+  // Sort usernames alphabetically so both sides get the same ID
+  const participants = [myUsername, peerUsername].sort();
+  return `chat:${participants[0]}:${participants[1]}`;
+}
+
 // ==================== HELPER FUNCTIONS ====================
 async function importPublicKey(base64Key) {
   const binary = atob(base64Key);
@@ -79,13 +101,24 @@ async function importPublicKey(base64Key) {
   return await crypto.subtle.importKey('raw', buffer, { name: 'ECDH', namedCurve: 'P-256' }, true, []);
 }
 
-function appendMessage(text, sender, isGroup = false) {
+function appendMessage(text, sender, isGroup = false, chatId = null) {
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${sender}`;
   const prefix = isGroup ? '[Group] ' : '';
   msgDiv.innerHTML = `<div>${prefix}${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
   messagesDiv.appendChild(msgDiv);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+  // Save to persistent storage
+  if (chatId) {
+    const messageObj = {
+      text,
+      sender,
+      isGroup,
+      timestamp: Date.now()
+    };
+    saveMessage(chatId, messageObj);
+  }
 }
 
 function appendSystemMessage(text, sender) {
@@ -114,7 +147,7 @@ function renderGroupList() {
   });
 }
 
-function openGroupChat(groupId) {
+async function openGroupChat(groupId) {
   console.log('Opening group chat:', groupId);
   currentGroupId = groupId;
   const group = groups[groupId];
@@ -122,8 +155,16 @@ function openGroupChat(groupId) {
   currentGroupNameSpan.textContent = group.name;
   groupChatHeader.classList.remove('hidden');
   messagesDiv.innerHTML = '';
+
+  // Load persistent messages for this group
+  const storedMessages = await loadMessages(groupId);
+  storedMessages.forEach(msg => {
+    appendMessage(msg.text, msg.sender, true, groupId);
+  });
+
+  // Also show in‑memory messages (if any new ones not yet saved)
   group.messages.forEach(msg => {
-    appendMessage(msg.text, msg.sender === myUsername ? 'me' : 'them', true);
+    appendMessage(msg.text, msg.sender === myUsername ? 'me' : 'them', true, groupId);
   });
 }
 
@@ -170,7 +211,10 @@ function setupDataChannel(channel, targetId) {
           if (plaintext) {
             group.messages.push({ text: plaintext, sender: 'Them', timestamp: Date.now() });
             if (currentGroupId === obj.groupId) {
-              appendMessage(plaintext, 'them', true);
+              appendMessage(plaintext, 'them', true, obj.groupId);
+            } else {
+              // Save even if not currently open
+              saveMessage(obj.groupId, { text: plaintext, sender: 'them', isGroup: true, timestamp: Date.now() });
             }
           }
         }
@@ -210,16 +254,23 @@ function setupDataChannel(channel, targetId) {
 
       if (obj.type === 'wallet-address') {
         peer.walletAddress = obj.address;
-        appendMessage('🔗 Peer wallet address received', 'them', false);
+        // Determine chatId for this peer
+        const peerUsername = peer.username || targetId; // fallback to ID if username not stored
+        const chatId = getOneToOneChatId(peerUsername);
+        appendMessage('🔗 Peer wallet address received', 'them', false, chatId);
         updateRecipientField();
         return;
       }
     } catch (e) {
+      // Not JSON – assume encrypted one‑on‑one text
       try {
         const bytes = CryptoJS.AES.decrypt(event.data, encryptionKey);
         const plaintext = bytes.toString(CryptoJS.enc.Utf8);
         if (plaintext) {
-          appendMessage(plaintext, 'them', false);
+          // Determine chatId
+          const peerUsername = peer.username || targetId;
+          const chatId = getOneToOneChatId(peerUsername);
+          appendMessage(plaintext, 'them', false, chatId);
         }
       } catch (decryptErr) {
         console.error('Decryption error:', decryptErr);
@@ -275,12 +326,21 @@ async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
       dataChannel: null,
       peerConnection: null,
       walletAddress: null,
-      pendingInvites: []
+      pendingInvites: [],
+      username: targetUsername
     };
     const peer = createPeerConnection(targetId, false);
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
     socket.emit('signal', { to: targetId, signal: offer });
+
+    // Load previous messages for this chat
+    const chatId = getOneToOneChatId(targetUsername);
+    const storedMessages = await loadMessages(chatId);
+    messagesDiv.innerHTML = ''; // clear current messages
+    storedMessages.forEach(msg => {
+      appendMessage(msg.text, msg.sender, false, chatId);
+    });
   } catch (err) {
     console.error('Error in startChat:', err);
   }
@@ -459,7 +519,8 @@ socket.on('signal', async (data) => {
         dataChannel: null,
         peerConnection: null,
         walletAddress: null,
-        pendingInvites: []
+        pendingInvites: [],
+        username: userInfo.username
       };
       createPeerConnection(from, true);
     } else {
@@ -508,7 +569,6 @@ sendBtn.onclick = () => {
     const encrypted = CryptoJS.AES.encrypt(text, group.key).toString();
     const groupMsg = { type: 'group-text', groupId: currentGroupId, data: encrypted };
     group.members.forEach(memberId => {
-      // Don't send to self
       if (memberId === socket.id) return;
       const peer = peers[memberId];
       if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
@@ -516,7 +576,7 @@ sendBtn.onclick = () => {
       }
     });
     group.messages.push({ text, sender: myUsername, timestamp: Date.now() });
-    appendMessage(text, 'me', true);
+    appendMessage(text, 'me', true, currentGroupId);
   } else {
     for (let targetId in peers) {
       const channel = peers[targetId].dataChannel;
@@ -525,10 +585,13 @@ sendBtn.onclick = () => {
         try {
           const encrypted = CryptoJS.AES.encrypt(text, key).toString();
           channel.send(encrypted);
+          // Determine chatId and save
+          const peerUsername = peers[targetId].username || targetId;
+          const chatId = getOneToOneChatId(peerUsername);
+          appendMessage(text, 'me', false, chatId);
         } catch (err) { console.error('Send error:', err); }
       }
     }
-    appendMessage(text, 'me', false);
   }
   messageInput.value = '';
 };
@@ -602,7 +665,6 @@ if (createGroupConfirm) {
       return;
     }
     const selectedIds = Array.from(checkboxes).map(cb => cb.value);
-    // Include creator in members list
     const allMembers = [socket.id, ...selectedIds];
     const groupId = 'group_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const groupKey = CryptoJS.lib.WordArray.random(32).toString();
