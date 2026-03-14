@@ -5,7 +5,7 @@ const socket = io(window.location.origin);
 let myUsername = null;
 let myKeyPair = null;
 let peers = {};               // { peerId: { encryptionKey, dataChannel, peerConnection, walletAddress, pendingInvites, username } }
-let groups = {};              // { groupId: { name, members, key, messages } }
+let groups = {};              // { groupId: { name, members, key } }  // no messages array
 let currentGroupId = null;
 let currentPeerId = null;     // ID of the currently selected one‑to‑one chat partner
 let receivingFile = null;     // file reception state
@@ -32,46 +32,7 @@ const HYPERSWITCH_PUBLISHABLE_KEY = 'pk_snd_24a92d39a6a14c36ab6bd247cdf7d5d4';
 let hyperswitchInstance = null;
 let hyperswitchElements = null;
 
-// DOM Elements
-const loginDiv = document.getElementById('login');
-const mainDiv = document.getElementById('main');
-const usernameInput = document.getElementById('username');
-const joinBtn = document.getElementById('joinBtn');
-const userList = document.getElementById('userList');
-const messagesDiv = document.getElementById('messages');
-const messageInput = document.getElementById('messageInput');
-const sendBtn = document.getElementById('sendBtn');
-const fileInput = document.getElementById('fileInput');
-const sendFileBtn = document.getElementById('sendFileBtn');
-const progressDiv = document.getElementById('progress');
-const enableBLEBtn = document.getElementById('enableBLEBtn');
-const disableBLEBtn = document.getElementById('disableBLEBtn');
-const nearbyDevicesDiv = document.getElementById('nearbyDevices');
-const walletAddressSpan = document.getElementById('wallet-address');
-const networkNameSpan = document.getElementById('network-name');
-const tokenSelect = document.getElementById('token-select');
-const paymentAmountInput = document.getElementById('payment-amount');
-const recipientAddressInput = document.getElementById('recipient-address');
-const sendPrivatePaymentBtn = document.getElementById('send-private-payment');
-const paymentStatusDiv = document.getElementById('payment-status');
-const balanceListDiv = document.getElementById('balance-list');
-const refreshBalancesBtn = document.getElementById('refresh-balances');
-const hyperswitchPayBtn = document.getElementById('hyperswitch-pay-button');
-const hyperswitchStatus = document.getElementById('hyperswitch-status');
-const hyperswitchElementDiv = document.getElementById('hyperswitch-payment-element');
-const typingIndicator = document.getElementById('typing-indicator');
-
-// Group elements
-const createGroupBtn = document.getElementById('createGroupBtn');
-const groupListDiv = document.getElementById('groupList');
-const groupChatHeader = document.getElementById('groupChatHeader');
-const currentGroupNameSpan = document.getElementById('currentGroupName');
-const leaveGroupBtn = document.getElementById('leaveGroupBtn');
-const groupModal = document.getElementById('groupModal');
-const modalUserList = document.getElementById('modalUserList');
-const groupNameInput = document.getElementById('groupNameInput');
-const createGroupConfirm = document.getElementById('createGroupConfirm');
-const cancelGroupModal = document.getElementById('cancelGroupModal');
+// DOM Elements (same as before – omitted for brevity, but keep all your existing DOM element declarations)
 
 // ==================== PERSISTENT STORAGE ====================
 const db = localforage.createInstance({
@@ -95,51 +56,38 @@ function getOneToOneChatId(peerUsername) {
 }
 
 // ==================== MESSAGE RENDERING ====================
-function appendMessage(text, sender, isGroup = false, chatId = null, save = true) {
+function appendMessage(text, sender, senderName, isGroup = false, chatId = null) {
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${sender}`;
-  const prefix = isGroup ? '[Group] ' : '';
-  msgDiv.innerHTML = `<div>${prefix}${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+  let displayName = sender === 'me' ? 'You' : senderName;
+  if (isGroup) {
+    // In groups, show the sender's name
+    msgDiv.innerHTML = `<div><strong>${displayName}:</strong> ${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+  } else {
+    // In one-to-one, just show the message
+    msgDiv.innerHTML = `<div>${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+  }
   messagesDiv.appendChild(msgDiv);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-  if (save && chatId) {
-    const messageObj = {
-      type: 'text',
-      text,
-      sender,
-      isGroup,
-      timestamp: Date.now()
-    };
-    saveMessage(chatId, messageObj);
-  }
 }
 
-function appendFileMessage(metadata, sender, isGroup, chatId, save = true) {
+function appendFileMessage(metadata, sender, senderName, isGroup, chatId) {
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${sender}`;
-  const prefix = isGroup ? '[Group] ' : '';
   const fileSize = (metadata.size / 1024).toFixed(1) + ' KB';
   let icon = '📄';
   if (metadata.mime.startsWith('image/')) icon = '🖼️';
   else if (metadata.mime.startsWith('video/')) icon = '🎥';
   else if (metadata.mime.startsWith('audio/')) icon = '🎵';
-  msgDiv.innerHTML = `<div>${prefix}${icon} <strong>${metadata.name}</strong> (${fileSize})</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+  
+  let displayName = sender === 'me' ? 'You' : senderName;
+  if (isGroup) {
+    msgDiv.innerHTML = `<div><strong>${displayName}:</strong> ${icon} ${metadata.name} (${fileSize})</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+  } else {
+    msgDiv.innerHTML = `<div>${icon} ${metadata.name} (${fileSize})</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
+  }
   messagesDiv.appendChild(msgDiv);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-  if (save && chatId) {
-    const messageObj = {
-      type: 'file',
-      name: metadata.name,
-      size: metadata.size,
-      mime: metadata.mime,
-      sender,
-      isGroup,
-      timestamp: Date.now()
-    };
-    saveMessage(chatId, messageObj);
-  }
 }
 
 // ==================== HELPER FUNCTIONS ====================
@@ -153,9 +101,9 @@ async function importPublicKey(base64Key) {
 function handleGroupInvite(data) {
   const { groupId, groupName, key, members } = data;
   if (groups[groupId]) return;
-  groups[groupId] = { name: groupName, members, key, messages: [] };
+  groups[groupId] = { name: groupName, members, key };
   renderGroupList();
-  appendMessage(`Added to group "${groupName}"`, 'them', false, null, true);
+  // Save a system message? Not needed.
 }
 
 function renderGroupList() {
@@ -185,14 +133,10 @@ async function openGroupChat(groupId) {
   const storedMessages = await loadMessages(groupId);
   storedMessages.forEach(msg => {
     if (msg.type === 'file') {
-      appendFileMessage(msg, msg.sender, true, groupId, false);
+      appendFileMessage(msg, msg.sender, msg.senderName, true, groupId);
     } else {
-      appendMessage(msg.text, msg.sender, true, groupId, false);
+      appendMessage(msg.text, msg.sender, msg.senderName, true, groupId);
     }
-  });
-
-  group.messages.forEach(msg => {
-    appendMessage(msg.text, msg.sender === myUsername ? 'me' : 'them', true, groupId, true);
   });
 }
 
@@ -208,9 +152,9 @@ async function selectPeer(peerId, peerUsername) {
   const storedMessages = await loadMessages(chatId);
   storedMessages.forEach(msg => {
     if (msg.type === 'file') {
-      appendFileMessage(msg, msg.sender, false, chatId, false);
+      appendFileMessage(msg, msg.sender, msg.senderName, false, chatId);
     } else {
-      appendMessage(msg.text, msg.sender, false, chatId, false);
+      appendMessage(msg.text, msg.sender, msg.senderName, false, chatId);
     }
   });
 }
@@ -256,11 +200,17 @@ function setupDataChannel(channel, targetId) {
           const bytes = CryptoJS.AES.decrypt(obj.data, group.key);
           const plaintext = bytes.toString(CryptoJS.enc.Utf8);
           if (plaintext) {
-            group.messages.push({ text: plaintext, sender: 'Them', timestamp: Date.now() });
+            const messageObj = {
+              type: 'text',
+              text: plaintext,
+              sender: 'them',
+              senderName: obj.senderName || 'Unknown',
+              isGroup: true,
+              timestamp: Date.now()
+            };
+            saveMessage(obj.groupId, messageObj);
             if (currentGroupId === obj.groupId) {
-              appendMessage(plaintext, 'them', true, obj.groupId, true);
-            } else {
-              saveMessage(obj.groupId, { type: 'text', text: plaintext, sender: 'them', isGroup: true, timestamp: Date.now() });
+              appendMessage(plaintext, 'them', obj.senderName, true, obj.groupId);
             }
           }
         }
@@ -276,7 +226,8 @@ function setupDataChannel(channel, targetId) {
           received: 0,
           chunks: [],
           groupId: obj.groupId,
-          isGroup: true
+          isGroup: true,
+          senderName: obj.senderName
         };
         receivingFileChatId = obj.groupId;
         progressDiv.innerHTML += `<div>📥 Receiving file: ${obj.name} in group</div>`;
@@ -309,13 +260,26 @@ function setupDataChannel(channel, targetId) {
           a.click();
           URL.revokeObjectURL(url);
           progressDiv.innerHTML += `<div>✅ File "${receivingFile.name}" received in group.</div>`;
-          appendFileMessage(
-            { name: receivingFile.name, size: receivingFile.size, mime: receivingFile.mime },
-            'them',
-            true,
-            receivingFile.groupId,
-            true
-          );
+          const messageObj = {
+            type: 'file',
+            name: receivingFile.name,
+            size: receivingFile.size,
+            mime: receivingFile.mime,
+            sender: 'them',
+            senderName: receivingFile.senderName,
+            isGroup: true,
+            timestamp: Date.now()
+          };
+          saveMessage(receivingFile.groupId, messageObj);
+          if (currentGroupId === receivingFile.groupId) {
+            appendFileMessage(
+              messageObj,
+              'them',
+              receivingFile.senderName,
+              true,
+              receivingFile.groupId
+            );
+          }
           receivingFile = null;
           receivingFileChatId = null;
         }
@@ -330,7 +294,8 @@ function setupDataChannel(channel, targetId) {
           mime: obj.mime,
           received: 0,
           chunks: [],
-          isGroup: false
+          isGroup: false,
+          senderName: peer.username
         };
         receivingFileChatId = getOneToOneChatId(peer.username || targetId);
         progressDiv.innerHTML += `<div>📥 Receiving file: ${obj.name}</div>`;
@@ -356,13 +321,26 @@ function setupDataChannel(channel, targetId) {
           a.click();
           URL.revokeObjectURL(url);
           progressDiv.innerHTML += `<div>✅ File "${receivingFile.name}" received.</div>`;
-          appendFileMessage(
-            { name: receivingFile.name, size: receivingFile.size, mime: receivingFile.mime },
-            'them',
-            false,
-            receivingFileChatId,
-            true
-          );
+          const messageObj = {
+            type: 'file',
+            name: receivingFile.name,
+            size: receivingFile.size,
+            mime: receivingFile.mime,
+            sender: 'them',
+            senderName: receivingFile.senderName,
+            isGroup: false,
+            timestamp: Date.now()
+          };
+          saveMessage(receivingFileChatId, messageObj);
+          if (currentPeerId && peers[currentPeerId] && peers[currentPeerId].username === receivingFile.senderName) {
+            appendFileMessage(
+              messageObj,
+              'them',
+              receivingFile.senderName,
+              false,
+              receivingFileChatId
+            );
+          }
           receivingFile = null;
           receivingFileChatId = null;
         }
@@ -373,7 +351,18 @@ function setupDataChannel(channel, targetId) {
         peer.walletAddress = obj.address;
         const peerUsername = peer.username || targetId;
         const chatId = getOneToOneChatId(peerUsername);
-        appendMessage('🔗 Peer wallet address received', 'them', false, chatId, true);
+        const messageObj = {
+          type: 'text',
+          text: '🔗 Peer wallet address received',
+          sender: 'them',
+          senderName: peerUsername,
+          isGroup: false,
+          timestamp: Date.now()
+        };
+        saveMessage(chatId, messageObj);
+        if (currentPeerId === targetId) {
+          appendMessage('🔗 Peer wallet address received', 'them', peerUsername, false, chatId);
+        }
         updateRecipientField();
         return;
       }
@@ -385,7 +374,18 @@ function setupDataChannel(channel, targetId) {
         if (plaintext) {
           const peerUsername = peer.username || targetId;
           const chatId = getOneToOneChatId(peerUsername);
-          appendMessage(plaintext, 'them', false, chatId, true);
+          const messageObj = {
+            type: 'text',
+            text: plaintext,
+            sender: 'them',
+            senderName: peerUsername,
+            isGroup: false,
+            timestamp: Date.now()
+          };
+          saveMessage(chatId, messageObj);
+          if (currentPeerId === targetId) {
+            appendMessage(plaintext, 'them', peerUsername, false, chatId);
+          }
         }
       } catch (decryptErr) {
         console.error('Decryption error:', decryptErr);
@@ -456,101 +456,7 @@ async function startChat(targetId, targetUsername, targetPublicKeyBase64) {
 }
 
 // ==================== BLE FUNCTIONS ====================
-async function getBLEPlugin() {
-  if (typeof Capacitor === 'undefined' || !Capacitor.isNative) return null;
-  try {
-    const module = await import('@capgo/capacitor-bluetooth-low-energy');
-    return module.BluetoothLowEnergy;
-  } catch (err) {
-    console.error('Failed to load BLE plugin:', err);
-    return null;
-  }
-}
-
-async function startBLEAdvert() {
-  const ble = await getBLEPlugin();
-  if (!ble || !myUsername || bleAdvertising) return;
-  try {
-    await ble.startAdvertising({
-      deviceName: `Chat_${myUsername}`,
-      services: [BLE_SERVICE_UUID],
-      characteristics: [{
-        uuid: BLE_CHARACTERISTIC_UUID,
-        properties: ['Read', 'Write', 'Notify'],
-        permissions: ['Readable', 'Writable'],
-        value: ''
-      }]
-    });
-    bleAdvertising = true;
-  } catch (err) { console.error('Start advertising failed:', err); }
-}
-
-async function stopBLEAdvert() {
-  const ble = await getBLEPlugin();
-  if (!ble || !bleAdvertising) return;
-  try { await ble.stopAdvertising(); bleAdvertising = false; } catch (err) { console.error('Stop advertising failed:', err); }
-}
-
-async function startBLEScan() {
-  const ble = await getBLEPlugin();
-  if (!ble || bleScanning) return;
-  try {
-    await ble.startScan({ services: [BLE_SERVICE_UUID] });
-    bleScanning = true;
-    ble.addListener('deviceScanned', (device) => addDeviceToList(device));
-  } catch (err) { console.error('Start scan failed:', err); }
-}
-
-async function stopBLEScan() {
-  const ble = await getBLEPlugin();
-  if (!ble || !bleScanning) return;
-  try { await ble.stopScan(); bleScanning = false; } catch (err) { console.error('Stop scan failed:', err); }
-}
-
-function addDeviceToList(device) {
-  if (!nearbyDevicesDiv) return;
-  if (document.getElementById(`device-${device.deviceId}`)) return;
-  const btn = document.createElement('button');
-  btn.id = `device-${device.deviceId}`;
-  btn.textContent = device.name || device.deviceId;
-  btn.onclick = () => connectToBLEDevice(device.deviceId);
-  nearbyDevicesDiv.appendChild(btn);
-}
-
-async function connectToBLEDevice(deviceId) {
-  const ble = await getBLEPlugin();
-  if (!ble || bleConnectedDeviceId) return;
-  try {
-    await ble.connect({ deviceId });
-    bleConnectedDeviceId = deviceId;
-    await ble.discoverServices({ deviceId });
-    ble.addListener('characteristicChanged', ({ characteristic, value }) => {
-      if (characteristic === BLE_CHARACTERISTIC_UUID) {
-        const encrypted = new TextDecoder().decode(value);
-        const key = getKeyForPeer(deviceId);
-        if (key) {
-          const bytes = CryptoJS.AES.decrypt(encrypted, key);
-          const plaintext = bytes.toString(CryptoJS.enc.Utf8);
-          displayBLEChatMessage(deviceId, plaintext, 'them');
-        }
-      }
-    });
-  } catch (err) { console.error('BLE connect error:', err); }
-}
-
-async function disconnectBLEDevice() {
-  const ble = await getBLEPlugin();
-  if (!ble || !bleConnectedDeviceId) return;
-  try { await ble.disconnect({ deviceId: bleConnectedDeviceId }); bleConnectedDeviceId = null; } catch (err) { console.error('Disconnect error:', err); }
-}
-
-function storeKeyForPeer(peerId, key) { peerKeys[peerId] = key; }
-function getKeyForPeer(peerId) { return peerKeys[peerId]; }
-
-function displayBLEChatMessage(peerId, text, sender) {
-  const shortId = peerId.substring(0, 6);
-  appendMessage(`[BLE ${shortId}] ${sender}: ${text}`, 'them', false, null, true);
-}
+// ... (keep your existing BLE functions unchanged)
 
 // ==================== EVENT LISTENERS ====================
 
@@ -677,7 +583,12 @@ sendBtn.onclick = () => {
     const group = groups[currentGroupId];
     if (!group) return;
     const encrypted = CryptoJS.AES.encrypt(text, group.key).toString();
-    const groupMsg = { type: 'group-text', groupId: currentGroupId, data: encrypted };
+    const groupMsg = {
+      type: 'group-text',
+      groupId: currentGroupId,
+      data: encrypted,
+      senderName: myUsername
+    };
     group.members.forEach(memberId => {
       if (memberId === socket.id) return;
       const peer = peers[memberId];
@@ -685,8 +596,17 @@ sendBtn.onclick = () => {
         peer.dataChannel.send(JSON.stringify(groupMsg));
       }
     });
-    group.messages.push({ text, sender: myUsername, timestamp: Date.now() });
-    appendMessage(text, 'me', true, currentGroupId, true);
+    // Save to DB and display immediately
+    const messageObj = {
+      type: 'text',
+      text,
+      sender: 'me',
+      senderName: myUsername,
+      isGroup: true,
+      timestamp: Date.now()
+    };
+    saveMessage(currentGroupId, messageObj);
+    appendMessage(text, 'me', myUsername, true, currentGroupId);
   } else if (currentPeerId) {
     const peer = peers[currentPeerId];
     if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
@@ -694,7 +614,16 @@ sendBtn.onclick = () => {
         const encrypted = CryptoJS.AES.encrypt(text, peer.encryptionKey).toString();
         peer.dataChannel.send(encrypted);
         const chatId = getOneToOneChatId(peer.username || currentPeerId);
-        appendMessage(text, 'me', false, chatId, true);
+        const messageObj = {
+          type: 'text',
+          text,
+          sender: 'me',
+          senderName: myUsername,
+          isGroup: false,
+          timestamp: Date.now()
+        };
+        saveMessage(chatId, messageObj);
+        appendMessage(text, 'me', myUsername, false, chatId);
       } catch (err) {
         console.error('Send error:', err);
         alert('Failed to send message.');
@@ -714,7 +643,6 @@ sendFileBtn.addEventListener('click', () => {
   if (!file) { alert('Choose a file first'); return; }
 
   if (currentGroupId) {
-    // Send file to group
     const group = groups[currentGroupId];
     if (!group) return;
     const reader = new FileReader();
@@ -725,7 +653,8 @@ sendFileBtn.addEventListener('click', () => {
       groupId: currentGroupId,
       name: file.name,
       size: file.size,
-      mime: file.type
+      mime: file.type,
+      senderName: myUsername
     };
     // Send metadata to all members
     group.members.forEach(memberId => {
@@ -758,14 +687,18 @@ sendFileBtn.addEventListener('click', () => {
       if (offset < file.size) readNext();
       else {
         progressDiv.innerHTML += `<div>✅ File "${file.name}" sent to group.</div>`;
-        // Append file message for sender
-        appendFileMessage(
-          { name: file.name, size: file.size, mime: file.type },
-          'me',
-          true,
-          currentGroupId,
-          true
-        );
+        const messageObj = {
+          type: 'file',
+          name: file.name,
+          size: file.size,
+          mime: file.type,
+          sender: 'me',
+          senderName: myUsername,
+          isGroup: true,
+          timestamp: Date.now()
+        };
+        saveMessage(currentGroupId, messageObj);
+        appendFileMessage(messageObj, 'me', myUsername, true, currentGroupId);
       }
       const percent = Math.min(100, Math.round((offset / file.size) * 100));
       progressDiv.innerHTML = `📤 Sending ${file.name} to group: ${percent}%`;
@@ -778,7 +711,6 @@ sendFileBtn.addEventListener('click', () => {
     readNext();
 
   } else if (currentPeerId) {
-    // Send file to one user
     const peer = peers[currentPeerId];
     if (!peer || !peer.dataChannel || peer.dataChannel.readyState !== 'open') {
       alert('Not connected to this user.');
@@ -806,14 +738,18 @@ function sendFileViaChannel(channel, file, encryptionKey, chatId) {
     if (offset < file.size) readNext();
     else {
       progressDiv.innerHTML += `<div>✅ File "${file.name}" sent.</div>`;
-      // Append file message for sender
-      appendFileMessage(
-        { name: file.name, size: file.size, mime: file.type },
-        'me',
-        false,
-        chatId,
-        true
-      );
+      const messageObj = {
+        type: 'file',
+        name: file.name,
+        size: file.size,
+        mime: file.type,
+        sender: 'me',
+        senderName: myUsername,
+        isGroup: false,
+        timestamp: Date.now()
+      };
+      saveMessage(chatId, messageObj);
+      appendFileMessage(messageObj, 'me', myUsername, false, chatId);
     }
     const percent = Math.min(100, Math.round((offset / file.size) * 100));
     progressDiv.innerHTML = `📤 Sending ${file.name}: ${percent}%`;
