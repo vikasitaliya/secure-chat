@@ -147,6 +147,7 @@ function renderGroupList() {
 }
 
 async function openGroupChat(groupId) {
+  console.log('Opening group chat:', groupId);
   // Leave one‑to‑one chat
   currentPeerId = null;
   currentGroupId = groupId;
@@ -156,17 +157,20 @@ async function openGroupChat(groupId) {
   groupChatHeader.classList.remove('hidden');
   messagesDiv.innerHTML = '';
 
+  // Load persistent messages for this group
   const storedMessages = await loadMessages(groupId);
   storedMessages.forEach(msg => {
     appendMessage(msg.text, msg.sender, true, groupId);
   });
 
+  // Also show in‑memory messages (if any new ones not yet saved)
   group.messages.forEach(msg => {
     appendMessage(msg.text, msg.sender === myUsername ? 'me' : 'them', true, groupId);
   });
 }
 
 async function selectPeer(peerId, peerUsername) {
+  console.log('Selecting peer:', peerUsername);
   // Leave group chat if active
   if (currentGroupId) {
     groupChatHeader.classList.add('hidden');
@@ -226,6 +230,7 @@ function setupDataChannel(channel, targetId) {
             if (currentGroupId === obj.groupId) {
               appendMessage(plaintext, 'them', true, obj.groupId);
             } else {
+              // Save even if not currently open
               saveMessage(obj.groupId, { text: plaintext, sender: 'them', isGroup: true, timestamp: Date.now() });
             }
           }
