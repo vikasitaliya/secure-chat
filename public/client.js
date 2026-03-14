@@ -100,10 +100,8 @@ function appendMessage(text, sender, senderName, isGroup = false, chatId = null)
   msgDiv.className = `message ${sender}`;
   let displayName = sender === 'me' ? 'You' : senderName;
   if (isGroup) {
-    // In groups, show the sender's name
     msgDiv.innerHTML = `<div><strong>${displayName}:</strong> ${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
   } else {
-    // In one-to-one, just show the message
     msgDiv.innerHTML = `<div>${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
   }
   messagesDiv.appendChild(msgDiv);
@@ -587,7 +585,7 @@ function getKeyForPeer(peerId) { return peerKeys[peerId]; }
 
 function displayBLEChatMessage(peerId, text, sender) {
   const shortId = peerId.substring(0, 6);
-  // For BLE, we'll treat as one-to-one and not store history
+  // BLE messages are treated as one-to-one and not stored
   const msgDiv = document.createElement('div');
   msgDiv.className = `message them`;
   msgDiv.innerHTML = `<div>[BLE ${shortId}] ${sender}: ${text}</div><div class="timestamp">${new Date().toLocaleTimeString()}</div>`;
