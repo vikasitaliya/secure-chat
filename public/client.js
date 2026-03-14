@@ -8,7 +8,8 @@ let peers = {};               // { peerId: { encryptionKey, dataChannel, peerCon
 let groups = {};              // { groupId: { name, members, key, messages } }
 let currentGroupId = null;
 let currentPeerId = null;     // ID of the currently selected one‑to‑one chat partner
-let receivingFile = null;
+let receivingFile = null;     // file reception state
+let receivingFileChatId = null; // which chat the incoming file belongs to
 let lastUserList = [];
 let typingTimeout = null;
 
@@ -230,7 +231,6 @@ function setupDataChannel(channel, targetId) {
             if (currentGroupId === obj.groupId) {
               appendMessage(plaintext, 'them', true, obj.groupId);
             } else {
-              // Save even if not currently open
               saveMessage(obj.groupId, { text: plaintext, sender: 'them', isGroup: true, timestamp: Date.now() });
             }
           }
@@ -238,9 +238,65 @@ function setupDataChannel(channel, targetId) {
         return;
       }
 
-      // File transfer
+      // Group file meta
+      if (obj.type === 'group-file-meta') {
+        receivingFile = {
+          name: obj.name,
+          size: obj.size,
+          mime: obj.mime,
+          received: 0,
+          chunks: [],
+          groupId: obj.groupId,
+          isGroup: true
+        };
+        receivingFileChatId = obj.groupId;
+        progressDiv.innerHTML += `<div>📥 Receiving file: ${obj.name} in group</div>`;
+        return;
+      }
+
+      // Group file chunk
+      if (obj.type === 'group-file-chunk') {
+        const group = groups[obj.groupId];
+        if (!group) return;
+        if (!receivingFile || receivingFile.groupId !== obj.groupId) {
+          console.warn('No active file reception for this group');
+          return;
+        }
+        const decrypted = CryptoJS.AES.decrypt(obj.data, group.key);
+        const decryptedBytes = new Uint8Array(decrypted.sigBytes);
+        for (let i = 0; i < decrypted.sigBytes; i++) {
+          decryptedBytes[i] = (decrypted.words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+        }
+        receivingFile.chunks.push(decryptedBytes);
+        receivingFile.received += decryptedBytes.length;
+        const percent = Math.min(100, Math.round((receivingFile.received / receivingFile.size) * 100));
+        progressDiv.innerHTML = `📦 Receiving ${receivingFile.name} in group: ${percent}%`;
+        if (receivingFile.received >= receivingFile.size) {
+          const blob = new Blob(receivingFile.chunks, { type: receivingFile.mime });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = receivingFile.name;
+          a.click();
+          URL.revokeObjectURL(url);
+          progressDiv.innerHTML += `<div>✅ File "${receivingFile.name}" received in group.</div>`;
+          receivingFile = null;
+          receivingFileChatId = null;
+        }
+        return;
+      }
+
+      // One‑to‑one file transfer
       if (obj.type === 'file-meta') {
-        receivingFile = { name: obj.name, size: obj.size, mime: obj.mime, received: 0, chunks: [] };
+        receivingFile = {
+          name: obj.name,
+          size: obj.size,
+          mime: obj.mime,
+          received: 0,
+          chunks: [],
+          isGroup: false
+        };
+        receivingFileChatId = getOneToOneChatId(peer.username || targetId);
         progressDiv.innerHTML += `<div>📥 Receiving file: ${obj.name}</div>`;
         return;
       }
@@ -265,6 +321,7 @@ function setupDataChannel(channel, targetId) {
           URL.revokeObjectURL(url);
           progressDiv.innerHTML += `<div>✅ File "${receivingFile.name}" received.</div>`;
           receivingFile = null;
+          receivingFileChatId = null;
         }
         return;
       }
@@ -569,6 +626,7 @@ socket.on('stop-typing', () => {
   typingIndicator.classList.add('hidden');
 });
 
+// ==================== SEND MESSAGE ====================
 sendBtn.onclick = () => {
   const text = messageInput.value.trim();
   if (!text) return;
@@ -608,17 +666,79 @@ sendBtn.onclick = () => {
   messageInput.value = '';
 };
 
+// ==================== SEND FILE ====================
 sendFileBtn.addEventListener('click', () => {
   const file = fileInput.files[0];
   if (!file) { alert('Choose a file first'); return; }
-  for (let targetId in peers) {
-    const channel = peers[targetId].dataChannel;
-    const key = peers[targetId].encryptionKey;
-    if (channel && channel.readyState === 'open') sendFileViaChannel(channel, file, key);
+
+  if (currentGroupId) {
+    // Send file to group
+    const group = groups[currentGroupId];
+    if (!group) return;
+    const reader = new FileReader();
+    let offset = 0;
+    const CHUNK_SIZE = 64 * 1024;
+    const metadata = {
+      type: 'group-file-meta',
+      groupId: currentGroupId,
+      name: file.name,
+      size: file.size,
+      mime: file.type
+    };
+    // Send metadata to all members
+    group.members.forEach(memberId => {
+      if (memberId === socket.id) return;
+      const peer = peers[memberId];
+      if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
+        peer.dataChannel.send(JSON.stringify(metadata));
+      }
+    });
+
+    reader.onload = (e) => {
+      const chunkData = e.target.result;
+      const wordArray = CryptoJS.lib.WordArray.create(chunkData);
+      const encrypted = CryptoJS.AES.encrypt(wordArray, group.key).toString();
+      const chunkMsg = {
+        type: 'group-file-chunk',
+        groupId: currentGroupId,
+        data: encrypted,
+        offset,
+        total: file.size
+      };
+      group.members.forEach(memberId => {
+        if (memberId === socket.id) return;
+        const peer = peers[memberId];
+        if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
+          peer.dataChannel.send(JSON.stringify(chunkMsg));
+        }
+      });
+      offset += CHUNK_SIZE;
+      if (offset < file.size) readNext();
+      else progressDiv.innerHTML += `<div>✅ File "${file.name}" sent to group.</div>`;
+      const percent = Math.min(100, Math.round((offset / file.size) * 100));
+      progressDiv.innerHTML = `📤 Sending ${file.name} to group: ${percent}%`;
+    };
+
+    function readNext() {
+      const slice = file.slice(offset, offset + CHUNK_SIZE);
+      reader.readAsArrayBuffer(slice);
+    }
+    readNext();
+
+  } else if (currentPeerId) {
+    // Send file to one user
+    const peer = peers[currentPeerId];
+    if (!peer || !peer.dataChannel || peer.dataChannel.readyState !== 'open') {
+      alert('Not connected to this user.');
+      return;
+    }
+    sendFileViaChannel(peer.dataChannel, file, peer.encryptionKey, false);
+  } else {
+    alert('Please select a user or group to chat with.');
   }
 });
 
-function sendFileViaChannel(channel, file, encryptionKey) {
+function sendFileViaChannel(channel, file, encryptionKey, isGroup = false) {
   const CHUNK_SIZE = 64 * 1024;
   const reader = new FileReader();
   let offset = 0;
