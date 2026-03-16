@@ -795,3 +795,9 @@ body {
     border-radius: 50px;
   }
 }
+/* ===== READ RECEIPTS ===== */
+.status {
+  font-size: 0.8rem;
+  margin-left: 5px;
+  color: #8a85ff;
+}
