@@ -36,9 +36,11 @@ scene.add(shape2);
 // Add ambient light and point lights
 const ambientLight = new THREE.AmbientLight(0x404060);
 scene.add(ambientLight);
+
 const light1 = new THREE.PointLight(0xff8acc, 1, 10);
 light1.position.set(2, 3, 4);
 scene.add(light1);
+
 const light2 = new THREE.PointLight(0x8a85ff, 1, 10);
 light2.position.set(-3, -1, 2);
 scene.add(light2);
