@@ -109,10 +109,18 @@ function clearUnreadCount(peerId) {
   }
 }
 
-// ==================== MESSAGE RENDERING ====================
-function appendMessage(text, sender, senderName, isGroup = false, chatId = null, delivered = false, read = false) {
+// ==================== MESSAGE RENDERING (with deduplication) ====================
+function appendMessage(text, sender, senderName, isGroup = false, chatId = null, delivered = false, read = false, msgId = null) {
+  // Avoid duplicates: if a message with the same msgId already exists in the DOM, skip
+  if (msgId && document.querySelector(`.message[data-msgid="${msgId}"]`)) {
+    console.warn('Duplicate message skipped, msgId:', msgId);
+    return;
+  }
+
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${sender}`;
+  if (msgId) msgDiv.setAttribute('data-msgid', msgId);
+
   let statusIcon = '';
   if (sender === 'me') {
     if (read) statusIcon = ' ✓✓';
@@ -128,9 +136,16 @@ function appendMessage(text, sender, senderName, isGroup = false, chatId = null,
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-function appendFileMessage(metadata, sender, senderName, isGroup, chatId, delivered = false, read = false) {
+function appendFileMessage(metadata, sender, senderName, isGroup, chatId, delivered = false, read = false, msgId = null) {
+  if (msgId && document.querySelector(`.message[data-msgid="${msgId}"]`)) {
+    console.warn('Duplicate file message skipped, msgId:', msgId);
+    return;
+  }
+
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${sender}`;
+  if (msgId) msgDiv.setAttribute('data-msgid', msgId);
+
   const fileSize = (metadata.size / 1024).toFixed(1) + ' KB';
   let icon = ' 📄';
   if (metadata.mime.startsWith('image/')) icon = ' 🖼️';
@@ -192,9 +207,9 @@ async function renderCurrentChat() {
     const storedMessages = await loadMessages(currentGroupId);
     storedMessages.forEach(msg => {
       if (msg.type === 'file') {
-        appendFileMessage(msg, msg.sender, msg.senderName, true, currentGroupId, msg.delivered, msg.read);
+        appendFileMessage(msg, msg.sender, msg.senderName, true, currentGroupId, msg.delivered, msg.read, msg.msgId);
       } else {
-        appendMessage(msg.text, msg.sender, msg.senderName, true, currentGroupId, msg.delivered, msg.read);
+        appendMessage(msg.text, msg.sender, msg.senderName, true, currentGroupId, msg.delivered, msg.read, msg.msgId);
       }
     });
   } else if (currentPeerId) {
@@ -205,9 +220,9 @@ async function renderCurrentChat() {
     const storedMessages = await loadMessages(chatId);
     storedMessages.forEach(msg => {
       if (msg.type === 'file') {
-        appendFileMessage(msg, msg.sender, msg.senderName, false, chatId, msg.delivered, msg.read);
+        appendFileMessage(msg, msg.sender, msg.senderName, false, chatId, msg.delivered, msg.read, msg.msgId);
       } else {
-        appendMessage(msg.text, msg.sender, msg.senderName, false, chatId, msg.delivered, msg.read);
+        appendMessage(msg.text, msg.sender, msg.senderName, false, chatId, msg.delivered, msg.read, msg.msgId);
       }
     });
   }
@@ -364,13 +379,12 @@ function setupDataChannel(channel, targetId) {
               sender: 'them',
               senderName: obj.senderName || 'Unknown',
               isGroup: true,
-              timestamp: Date.now()
+              timestamp: Date.now(),
+              msgId: `group-${Date.now()}-${Math.random().toString(36).substr(2, 6)}` // simple ID
             };
             saveMessage(obj.groupId, messageObj);
             if (currentGroupId === obj.groupId) {
-              appendMessage(plaintext, 'them', obj.senderName, true, obj.groupId);
-            } else {
-              // Group unread not implemented yet
+              appendMessage(plaintext, 'them', obj.senderName, true, obj.groupId, true, false, messageObj.msgId);
             }
           }
         }
@@ -428,13 +442,12 @@ function setupDataChannel(channel, targetId) {
             sender: 'them',
             senderName: receivingFile.senderName,
             isGroup: true,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            msgId: `group-file-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`
           };
           saveMessage(receivingFile.groupId, messageObj);
           if (currentGroupId === receivingFile.groupId) {
-            appendFileMessage(messageObj, 'them', receivingFile.senderName, true, receivingFile.groupId);
-          } else {
-            // group unread not implemented
+            appendFileMessage(messageObj, 'them', receivingFile.senderName, true, receivingFile.groupId, true, false, messageObj.msgId);
           }
           receivingFile = null;
           receivingFileChatId = null;
@@ -486,12 +499,13 @@ function setupDataChannel(channel, targetId) {
             sender: 'them',
             senderName: receivingFile.senderName,
             isGroup: false,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            msgId: `file-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`
           };
           const chatId = getOneToOneChatId(peer.username);
           saveMessage(chatId, messageObj);
           if (currentPeerId === targetId) {
-            appendFileMessage(messageObj, 'them', receivingFile.senderName, false, chatId);
+            appendFileMessage(messageObj, 'them', receivingFile.senderName, false, chatId, true, false, messageObj.msgId);
           } else {
             incrementUnreadCount(targetId);
           }
@@ -525,7 +539,7 @@ function setupDataChannel(channel, targetId) {
 
         // Show if this chat is open, otherwise increment unread count
         if (currentPeerId === targetId && !currentGroupId) {
-          appendMessage(plaintext, 'them', peer.username, false, chatId, true, false);
+          appendMessage(plaintext, 'them', peer.username, false, chatId, true, false, obj.msgId);
         } else {
           incrementUnreadCount(targetId);
         }
@@ -584,7 +598,7 @@ function setupDataChannel(channel, targetId) {
           saveMessage(chatId, messageObj);
 
           if (currentPeerId === targetId && !currentGroupId) {
-            appendMessage(plaintext, 'them', peer.username, false, chatId, true, false);
+            appendMessage(plaintext, 'them', peer.username, false, chatId, true, false, msgId);
           } else {
             incrementUnreadCount(targetId);
           }
@@ -848,10 +862,11 @@ sendBtn.onclick = async () => {
       sender: 'me',
       senderName: myUsername,
       isGroup: true,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      msgId: `group-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`
     };
     await saveMessage(currentGroupId, messageObj);
-    appendMessage(text, 'me', myUsername, true, currentGroupId);
+    appendMessage(text, 'me', myUsername, true, currentGroupId, false, false, messageObj.msgId);
   } else if (currentPeerId) {
     const peer = peers[currentPeerId];
     if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
@@ -879,7 +894,7 @@ sendBtn.onclick = async () => {
           read: false
         };
         await saveMessage(chatId, messageObj);
-        appendMessage(text, 'me', myUsername, false, chatId, false, false);
+        appendMessage(text, 'me', myUsername, false, chatId, false, false, msgId);
       } catch (err) {
         console.error('Send error:', err);
         alert('Failed to send message.');
@@ -953,10 +968,11 @@ sendFileBtn.addEventListener('click', () => {
           sender: 'me',
           senderName: myUsername,
           isGroup: true,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          msgId: `group-file-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`
         };
         saveMessage(currentGroupId, messageObj);
-        appendFileMessage(messageObj, 'me', myUsername, true, currentGroupId);
+        appendFileMessage(messageObj, 'me', myUsername, true, currentGroupId, false, false, messageObj.msgId);
       }
       const percent = Math.min(100, Math.round((offset / file.size) * 100));
       progressDiv.innerHTML = `Sending ${file.name} to group: ${percent}%`;
@@ -985,14 +1001,15 @@ function sendFileViaChannel(channel, file, encryptionKey, chatId) {
   const CHUNK_SIZE = 64 * 1024;
   const reader = new FileReader();
   let offset = 0;
-  const metadata = { type: 'file-meta', name: file.name, size: file.size, mime: file.type };
+  const msgId = `file-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+  const metadata = { type: 'file-meta', name: file.name, size: file.size, mime: file.type, msgId };
   channel.send(JSON.stringify(metadata));
 
   reader.onload = (e) => {
     const chunkData = e.target.result;
     const wordArray = CryptoJS.lib.WordArray.create(chunkData);
     const encrypted = CryptoJS.AES.encrypt(wordArray, encryptionKey).toString();
-    channel.send(JSON.stringify({ type: 'file-chunk', data: encrypted, offset, total: file.size }));
+    channel.send(JSON.stringify({ type: 'file-chunk', data: encrypted, offset, total: file.size, msgId }));
     offset += CHUNK_SIZE;
     if (offset < file.size) readNext();
     else {
@@ -1005,10 +1022,13 @@ function sendFileViaChannel(channel, file, encryptionKey, chatId) {
         sender: 'me',
         senderName: myUsername,
         isGroup: false,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        msgId,
+        delivered: false,
+        read: false
       };
       saveMessage(chatId, messageObj);
-      appendFileMessage(messageObj, 'me', myUsername, false, chatId);
+      appendFileMessage(messageObj, 'me', myUsername, false, chatId, false, false, msgId);
     }
     const percent = Math.min(100, Math.round((offset / file.size) * 100));
     progressDiv.innerHTML = `Sending ${file.name}: ${percent}%`;
