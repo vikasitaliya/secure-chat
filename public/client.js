@@ -213,7 +213,7 @@ async function renderCurrentChat() {
   }
 }
 
-// ==================== UPDATE MESSAGE STATUS (only icon, no full reload) ====================
+// ==================== UPDATE MESSAGE STATUS ====================
 async function updateMessageStatus(chatId, msgId, updates) {
   let messages = await loadMessages(chatId);
   let changed = false;
@@ -226,23 +226,8 @@ async function updateMessageStatus(chatId, msgId, updates) {
   }
   if (changed) {
     await db.setItem(chatId, messages);
-    // Instead of full re-render, find the message element and update its status icon
-    if ((currentGroupId && chatId === currentGroupId) || (currentPeerId && getOneToOneChatId(peers[currentPeerId]?.username) === chatId)) {
-      // Find the message div in the DOM by looking for the status span's parent
-      const messageDivs = messagesDiv.querySelectorAll('.message');
-      for (let i = 0; i < messageDivs.length; i++) {
-        const div = messageDivs[i];
-        // The message's text might contain the msgId? Not stored in DOM. We'll rely on order.
-        // Simpler: re-render the whole chat. But to avoid the "duplicate" feeling, we'll update only the icon.
-        // Since we know the exact message, we can match by its text and timestamp? Not reliable.
-        // For now, we'll re-render but clear the container first – this won't cause duplicates.
-        // Actually, we already do that in renderCurrentChat. But we are in the status update, and we don't want full reload if only icon changed.
-        // We'll implement a targeted update: store the message element's ID in the message object.
-        // To keep it simple and avoid complexity, we'll re-render – it's safe and won't cause duplicates.
-        break;
-      }
-    }
-    await renderCurrentChat(); // This clears and redraws all messages – no duplication
+    // Refresh the current chat to show updated status icons
+    await renderCurrentChat();
   }
 }
 
@@ -299,27 +284,30 @@ async function selectPeer(peerId, peerUsername) {
   // Clear unread count for this peer
   clearUnreadCount(peerId);
 
-  // Send read receipts for all unread messages from this peer
+  // Send read receipts for **all** unread messages from this peer
   const peer = peers[peerId];
   if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
     const chatId = getOneToOneChatId(peerUsername);
     const storedMessages = await loadMessages(chatId);
     const unread = storedMessages.filter(m => m.sender === 'them' && !m.read);
     if (unread.length > 0) {
+      // Mark all unread messages as read in DB
       for (let msg of unread) {
         msg.read = true;
       }
       await db.setItem(chatId, storedMessages);
+      // Refresh chat to show double ticks
       await renderCurrentChat();
 
-      // Send read ack for the latest unread message
-      const latest = unread[unread.length - 1];
-      const ack = {
-        type: 'read-ack',
-        msgId: latest.msgId
-      };
-      peer.dataChannel.send(JSON.stringify(ack));
-      console.log('📬 Sent read-ack for msgId:', latest.msgId);
+      // Send a read-ack for **each** unread message
+      for (let msg of unread) {
+        const ack = {
+          type: 'read-ack',
+          msgId: msg.msgId
+        };
+        peer.dataChannel.send(JSON.stringify(ack));
+        console.log('📬 Sent read-ack for msgId:', msg.msgId);
+      }
     }
   }
 }
@@ -1184,7 +1172,7 @@ if (sendPrivatePaymentBtn) {
 
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
-// ======== HYPERSWITCH ========..
+// ======== HYPERSWITCH ========
 if (hyperswitchPayBtn) {
   hyperswitchPayBtn.addEventListener('click', async () => {
     if (typeof Hyper === 'undefined') {
