@@ -772,7 +772,16 @@ body {
   margin-left: 5px;
   color: #a1b712ac;
 }
-
+.unread-badge {
+  background: #ff8acc;
+  color: #000;
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  margin-left: 10px;
+  float: right;
+}
 /* ===== RESPONSIVE ===== */
 @media (max-width: 900px) {
   #main {
