@@ -1184,7 +1184,7 @@ if (sendPrivatePaymentBtn) {
 
 if (refreshBalancesBtn) refreshBalancesBtn.addEventListener('click', refreshBalances);
 
-// ======== HYPERSWITCH ========
+// ======== HYPERSWITCH ========..
 if (hyperswitchPayBtn) {
   hyperswitchPayBtn.addEventListener('click', async () => {
     if (typeof Hyper === 'undefined') {
