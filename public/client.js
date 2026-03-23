@@ -8,10 +8,13 @@ let peers = {}; // { peerId: { encryptionKey, dataChannel, peerConnection, walle
 let groups = {}; // { groupId: { name, members, key }}
 let currentGroupId = null;
 let currentPeerId = null; // ID of the currently selected one-to-one chat partner
-let receivingFile = null; // file reception state
-let receivingFileChatId = null; // which chat the incoming file belongs to
+let receivingFile = null;
+let receivingFileChatId = null;
 let lastUserList = [];
 let typingTimeout = null;
+
+// Unread counts for one-to-one chats (key: peerId, value: count)
+let unreadCounts = {};
 
 // BLE
 let bleEnabled = false;
@@ -94,6 +97,20 @@ function getOneToOneChatId(peerUsername) {
   return `chat:${participants[0]}:${participants[1]}`;
 }
 
+// ==================== UNREAD COUNTS HELPERS ====================
+function incrementUnreadCount(peerId) {
+  if (peerId === currentPeerId || currentGroupId) return; // don't count if chat is already open
+  unreadCounts[peerId] = (unreadCounts[peerId] || 0) + 1;
+  renderUserList(); // refresh the user list to show the badge
+}
+
+function clearUnreadCount(peerId) {
+  if (unreadCounts[peerId]) {
+    delete unreadCounts[peerId];
+    renderUserList();
+  }
+}
+
 // ==================== MESSAGE RENDERING ====================
 function appendMessage(text, sender, senderName, isGroup = false, chatId = null, delivered = false, read = false) {
   const msgDiv = document.createElement('div');
@@ -102,7 +119,6 @@ function appendMessage(text, sender, senderName, isGroup = false, chatId = null,
   if (sender === 'me') {
     if (read) statusIcon = ' ✓✓';
     else if (delivered) statusIcon = ' ✓';
-    // else nothing (sending)
   }
   let displayName = sender === 'me' ? 'You' : senderName;
   if (isGroup) {
@@ -137,6 +153,35 @@ function appendFileMessage(metadata, sender, senderName, isGroup, chatId, delive
   }
   messagesDiv.appendChild(msgDiv);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+// ==================== USER LIST RENDERING (with badges) ====================
+function renderUserList() {
+  if (!userList) return;
+  const others = lastUserList.filter(u => u.id !== socket.id);
+  userList.innerHTML = '';
+  if (others.length === 0) {
+    userList.innerHTML = '<li>No other users online</li>';
+    return;
+  }
+  others.forEach(user => {
+    const li = document.createElement('li');
+    li.textContent = user.username;
+    li.setAttribute('data-id', user.id);
+    li.setAttribute('data-publickey', user.publicKey);
+    li.addEventListener('click', () => startChat(user.id, user.username, user.publicKey));
+
+    // Add badge for unread count
+    const count = unreadCounts[user.id];
+    if (count && count > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'unread-badge';
+      badge.textContent = count > 9 ? '9+' : count;
+      li.appendChild(badge);
+    }
+
+    userList.appendChild(li);
+  });
 }
 
 // ==================== CHAT RENDERING (REFRESH CURRENT) ====================
@@ -182,7 +227,6 @@ async function updateMessageStatus(chatId, msgId, updates) {
   }
   if (changed) {
     await db.setItem(chatId, messages);
-    // If this chat is currently open, refresh the view
     await renderCurrentChat();
   }
 }
@@ -237,6 +281,9 @@ async function selectPeer(peerId, peerUsername) {
   currentPeerId = peerId;
   await renderCurrentChat();
 
+  // Clear unread count for this peer
+  clearUnreadCount(peerId);
+
   // Send read receipts for all unread messages from this peer
   const peer = peers[peerId];
   if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
@@ -248,7 +295,6 @@ async function selectPeer(peerId, peerUsername) {
         msg.read = true;
       }
       await db.setItem(chatId, storedMessages);
-      // Re-render to show double ticks
       await renderCurrentChat();
 
       // Send read ack for the latest unread message
@@ -258,6 +304,7 @@ async function selectPeer(peerId, peerUsername) {
         msgId: latest.msgId
       };
       peer.dataChannel.send(JSON.stringify(ack));
+      console.log('📬 Sent read-ack for msgId:', latest.msgId);
     }
   }
 }
@@ -293,7 +340,6 @@ function setupDataChannel(channel, targetId) {
     const encryptionKey = peer.encryptionKey;
 
     try {
-      // First, try to parse as JSON (new format)
       const obj = JSON.parse(event.data);
 
       // --- Group invites ---
@@ -439,6 +485,9 @@ function setupDataChannel(channel, targetId) {
           saveMessage(chatId, messageObj);
           if (currentPeerId === targetId) {
             appendFileMessage(messageObj, 'them', receivingFile.senderName, false, chatId);
+          } else {
+            // Not the current chat, increment unread count
+            incrementUnreadCount(targetId);
           }
           receivingFile = null;
           receivingFileChatId = null;
@@ -446,14 +495,14 @@ function setupDataChannel(channel, targetId) {
         return;
       }
 
-      // --- One-to-one text message (encrypted, new format) ---
+      // --- One-to-one text message (new format) ---
       if (obj.type === 'text') {
-        // Decrypt
         const bytes = CryptoJS.AES.decrypt(obj.data, encryptionKey);
         const plaintext = bytes.toString(CryptoJS.enc.Utf8);
         if (!plaintext) return;
 
-        // Save message with delivered = true (we just received it)
+        console.log('📥 Received text message with msgId:', obj.msgId);
+
         const messageObj = {
           type: 'text',
           text: plaintext,
@@ -468,9 +517,11 @@ function setupDataChannel(channel, targetId) {
         const chatId = getOneToOneChatId(peer.username);
         saveMessage(chatId, messageObj);
 
-        // Show if this chat is open
+        // Show if this chat is open, otherwise increment unread count
         if (currentPeerId === targetId && !currentGroupId) {
           appendMessage(plaintext, 'them', peer.username, false, chatId, true, false);
+        } else {
+          incrementUnreadCount(targetId);
         }
 
         // Send delivery acknowledgment
@@ -479,11 +530,13 @@ function setupDataChannel(channel, targetId) {
           msgId: obj.msgId
         };
         channel.send(JSON.stringify(ack));
+        console.log('📬 Sent delivery-ack for msgId:', obj.msgId);
         return;
       }
 
       // --- Delivery acknowledgment ---
       if (obj.type === 'delivery-ack') {
+        console.log('✅ Received delivery ack for msgId:', obj.msgId);
         const chatId = getOneToOneChatId(peer.username);
         updateMessageStatus(chatId, obj.msgId, { delivered: true });
         return;
@@ -491,26 +544,24 @@ function setupDataChannel(channel, targetId) {
 
       // --- Read acknowledgment ---
       if (obj.type === 'read-ack') {
+        console.log('👀 Received read ack for msgId:', obj.msgId);
         const chatId = getOneToOneChatId(peer.username);
         updateMessageStatus(chatId, obj.msgId, { read: true });
         return;
       }
 
-      // --- Wallet address (legacy, but keep) ---
+      // --- Wallet address ---
       if (obj.type === 'wallet-address') {
         if (peers[targetId]) peers[targetId].walletAddress = obj.address;
         return;
       }
-
-      // If we get here, it's an unknown type – ignore
     } catch (err) {
-      // Failed to parse JSON: assume it's a legacy plain encrypted message
+      // Legacy message (plain encrypted)
       console.log('Received legacy message, attempting to decrypt');
       try {
         const bytes = CryptoJS.AES.decrypt(event.data, encryptionKey);
         const plaintext = bytes.toString(CryptoJS.enc.Utf8);
         if (plaintext) {
-          // No msgId for legacy messages, so we generate one for internal use
           const msgId = 'legacy-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
           const messageObj = {
             type: 'text',
@@ -528,9 +579,10 @@ function setupDataChannel(channel, targetId) {
 
           if (currentPeerId === targetId && !currentGroupId) {
             appendMessage(plaintext, 'them', peer.username, false, chatId, true, false);
+          } else {
+            incrementUnreadCount(targetId);
           }
-
-          // For legacy messages, we don't send acks (peer may not support them)
+          // No acks for legacy messages
         }
       } catch (legacyErr) {
         console.error('Failed to decrypt legacy message:', legacyErr);
@@ -634,15 +686,14 @@ async function deriveWalletFromMasterKey(privateKey) {
 }
 
 function getTokenAddress(token, chainId) {
-  if (chainId === 11155111) { // Sepolia
+  if (chainId === 11155111) {
     const addresses = {
       usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
-      usdt: '', // not available on Sepolia? Add if needed
+      usdt: '',
       dai: ''
     };
     return addresses[token];
   }
-  // mainnet addresses (fallback)
   const addresses = {
     usdc: '0x07865c6E87B9F70255377e024ace6630C1Eaa37F',
     usdt: '0x7D4CcE7fB4cDBb702F134e284fFDC8D80B0BF720',
@@ -698,20 +749,7 @@ joinBtn.addEventListener('click', async () => {
 
 socket.on('user-list', (users) => {
   lastUserList = users;
-  const others = users.filter(u => u.id !== socket.id);
-  userList.innerHTML = '';
-  if (others.length === 0) {
-    userList.innerHTML = '<li>No other users online</li>';
-    return;
-  }
-  others.forEach(user => {
-    const li = document.createElement('li');
-    li.textContent = user.username;
-    li.setAttribute('data-id', user.id);
-    li.setAttribute('data-publickey', user.publicKey);
-    li.addEventListener('click', () => startChat(user.id, user.username, user.publicKey));
-    userList.appendChild(li);
-  });
+  renderUserList();
 });
 
 socket.on('signal', async (data) => {
@@ -821,6 +859,7 @@ sendBtn.onclick = async () => {
           msgId
         };
         peer.dataChannel.send(JSON.stringify(envelope));
+        console.log('📤 Sent message with msgId:', msgId);
 
         const chatId = getOneToOneChatId(peer.username || currentPeerId);
         const messageObj = {
